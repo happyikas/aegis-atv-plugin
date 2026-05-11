@@ -10,8 +10,8 @@ import type {
   IntentDivergence,
 } from "./types.js";
 
-function classifyBlastRadius(action: ActionRequest["action"]): BlastRadius {
-  switch (action) {
+function classifyBlastRadius(request: ActionRequest): BlastRadius {
+  switch (request.action) {
     case "read_file":
     case "search_memory":
       return "low";
@@ -22,6 +22,26 @@ function classifyBlastRadius(action: ActionRequest["action"]): BlastRadius {
       return "high";
     case "delete_file":
       return "critical";
+    case "mcp_tool": {
+      const payload = request.payload as {
+        tool_name?: string;
+        read_only?: boolean;
+        side_effect?: boolean;
+      };
+      const toolName = (payload.tool_name ?? "").toLowerCase();
+      if (payload.side_effect === true) {
+        return "high";
+      }
+      if (payload.read_only === true) {
+        return "low";
+      }
+      if (
+        keywordHit(toolName, ["delete", "share", "send", "write", "update", "publish", "deploy"])
+      ) {
+        return "high";
+      }
+      return "medium";
+    }
   }
 }
 
@@ -64,6 +84,25 @@ export function detectIntentDivergence(request: ActionRequest, blastRadius: Blas
     reasons.push("delete_file_without_delete_language_in_intent");
   }
 
+  if (request.action === "mcp_tool") {
+    const payload = request.payload as { tool_name?: string; side_effect?: boolean };
+    const toolName = (payload.tool_name ?? "").toLowerCase();
+    if (
+      payload.side_effect === true &&
+      !keywordHit(intent, ["share", "send", "write", "update", "deploy", "publish", "delete"])
+    ) {
+      score += 0.55;
+      reasons.push("mcp_side_effect_without_matching_intent_language");
+    }
+    if (
+      keywordHit(toolName, ["share", "send", "publish", "delete", "write"]) &&
+      !keywordHit(intent, ["share", "send", "publish", "delete", "write"])
+    ) {
+      score += 0.35;
+      reasons.push("mcp_tool_name_implies_side_effect_but_intent_does_not");
+    }
+  }
+
   return {
     score: Math.min(1, score),
     threshold: 0.65,
@@ -76,7 +115,7 @@ export class ActionFirewall {
   constructor(private readonly integrity?: IntegrityBaselineStore) {}
 
   async evaluate(request: ActionRequest): Promise<ActionEvaluation> {
-    const blastRadius = classifyBlastRadius(request.action);
+    const blastRadius = classifyBlastRadius(request);
     const provenance = summarizeProvenance(request.context?.sources, blastRadius);
     const divergence = detectIntentDivergence(request, blastRadius);
     const integrity = this.integrity

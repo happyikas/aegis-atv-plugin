@@ -47,6 +47,31 @@ Say:
 - "This is the hard stop case. The action conflicts with trusted intent and the realized action no longer matches the declared purpose."
 - "This is where the product stops side effects before they happen."
 
+## 4. MCP interception
+
+Expected result:
+
+- JSON-RPC-shaped response
+- policy outcome returned in-band
+- blocked or approval-required tool calls return structured errors instead of silent execution
+
+Say:
+
+- "This is how the same policy layer fits into MCP transport instead of a custom preview endpoint."
+- "The developer experience stays familiar, but the runtime now has a trust verdict before the tool call proceeds."
+
+## 5. Reviewer attestation
+
+Expected result:
+
+- `trusted`: `false` when reviewer verdicts diverge
+- reasons include `reviewer_verdict_mismatch`
+
+Say:
+
+- "Now we are not only reviewing the action. We are also reviewing whether the reviewers agree for good reasons."
+- "That gives us a path from single-reviewer policy to stronger consensus and attestation products."
+
 ## What to highlight in every response
 
 - `verdict`

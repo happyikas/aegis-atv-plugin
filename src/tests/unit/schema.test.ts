@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { memoryMetadataSchema } from "../../core/schema.js";
+import {
+  mcpInterceptRequestSchema,
+  memoryMetadataSchema,
+  reviewerAttestationRequestSchema,
+} from "../../core/schema.js";
 
 describe("memory metadata schema", () => {
   it("accepts a valid sidecar metadata object", () => {
@@ -36,5 +40,40 @@ describe("memory metadata schema", () => {
         checkpoint_refs: [],
       }),
     ).toThrow();
+  });
+
+  it("accepts a valid MCP intercept request", () => {
+    const parsed = mcpInterceptRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: "1",
+      method: "tools/call",
+      params: {
+        requested_by: "aid:mcp:client",
+        server_name: "github",
+        tool_name: "pull_request.create",
+        arguments: { title: "demo" },
+        side_effect: true,
+      },
+    });
+
+    expect(parsed.params.tool_name).toBe("pull_request.create");
+  });
+
+  it("accepts a reviewer attestation request", () => {
+    const parsed = reviewerAttestationRequestSchema.parse({
+      artifact_id: "pr-1",
+      primary: {
+        reviewer_id: "aid:reviewer:1",
+        output: "Approve after minor doc fixes.",
+        verdict: "needs_changes",
+      },
+      secondary: {
+        reviewer_id: "aid:reviewer:2",
+        output: "Approve after minor doc fixes.",
+        verdict: "needs_changes",
+      },
+    });
+
+    expect(parsed.artifact_id).toBe("pr-1");
   });
 });

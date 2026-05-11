@@ -53,7 +53,8 @@ export type ActionName =
   | "delete_file"
   | "external_share"
   | "read_file"
-  | "search_memory";
+  | "search_memory"
+  | "mcp_tool";
 
 export interface ActionRequest {
   action: ActionName;
@@ -117,6 +118,14 @@ export interface ActionCostEstimate {
   output_tokens?: number;
   reasoning_tokens?: number;
   estimated_usd?: number;
+}
+
+export interface McpToolPayload {
+  server_name: string;
+  tool_name: string;
+  arguments: Record<string, unknown>;
+  read_only?: boolean;
+  side_effect?: boolean;
 }
 
 export interface ActionContext {
@@ -205,4 +214,100 @@ export interface ActionEvaluation {
   integrity?: IntegrityCheckReport;
   divergence: IntentDivergence;
   telemetry: TelemetryVectorRecord;
+}
+
+export type TelemetryEventType =
+  | "preview"
+  | "blocked"
+  | "queued_for_approval"
+  | "executed"
+  | "executed_from_approval";
+
+export interface TelemetryEventRecord {
+  telemetry_id: string;
+  recorded_at: string;
+  event_type: TelemetryEventType;
+  action: ActionName;
+  requested_by: string;
+  verdict?: FirewallVerdict;
+  blast_radius?: BlastRadius;
+  approval_id?: string;
+  signals: string[];
+  declared_intent?: string;
+  vector_sha256?: string;
+  evaluation?: ActionEvaluation;
+  result?: {
+    executed: boolean;
+    queued: boolean;
+    reason?: string;
+  };
+}
+
+export interface TelemetrySummary {
+  telemetry_id: string;
+  recorded_at: string;
+  event_type: TelemetryEventType;
+  action: ActionName;
+  requested_by: string;
+  verdict?: FirewallVerdict;
+  blast_radius?: BlastRadius;
+  signal_count: number;
+  signals: string[];
+  vector_sha256?: string;
+}
+
+export interface TelemetryComparison {
+  telemetry_ids: string[];
+  compared_at: string;
+  shared_signals: string[];
+  verdicts: Array<{
+    telemetry_id: string;
+    verdict?: FirewallVerdict;
+    blast_radius?: BlastRadius;
+    signal_count: number;
+    vector_sha256?: string;
+  }>;
+}
+
+export interface McpInterceptRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: string;
+  params: {
+    requested_by: string;
+    server_name: string;
+    tool_name: string;
+    arguments?: Record<string, unknown>;
+    read_only?: boolean;
+    side_effect?: boolean;
+    context?: ActionContext;
+  };
+}
+
+export interface ReviewerAttestationRequest {
+  artifact_id: string;
+  primary: {
+    reviewer_id: string;
+    output: string;
+    verdict: "approve" | "reject" | "needs_changes";
+    sources?: InstructionSourceInput[];
+  };
+  secondary: {
+    reviewer_id: string;
+    output: string;
+    verdict: "approve" | "reject" | "needs_changes";
+    sources?: InstructionSourceInput[];
+  };
+}
+
+export interface ReviewerAttestationResult {
+  artifact_id: string;
+  attested_at: string;
+  trusted: boolean;
+  primary_digest: string;
+  secondary_digest: string;
+  provenance_overlap: number;
+  verdict_match: boolean;
+  semantic_divergence: number;
+  reasons: string[];
 }

@@ -10,6 +10,7 @@ import { OpenClawWorkspaceAdapter } from "../../adapters/openclaw-workspace.js";
 import { ApprovalQueue } from "../../core/approval-queue.js";
 import { ActionFirewall } from "../../core/action-firewall.js";
 import { IntegrityBaselineStore } from "../../core/integrity.js";
+import { TelemetryStore } from "../../core/telemetry-store.js";
 import { AuditLogger } from "../../daemon/audit.js";
 import { CheckpointManager } from "../../daemon/checkpoint.js";
 
@@ -52,6 +53,7 @@ async function createHarness() {
   const approvals = new ApprovalQueue(dataRoot);
   const audit = new AuditLogger(dataRoot);
   const integrity = new IntegrityBaselineStore(dataRoot, process.cwd());
+  const telemetry = new TelemetryStore(dataRoot);
   const firewall = new ActionFirewall(integrity);
 
   const handlers = createRouteHandlers({
@@ -63,8 +65,9 @@ async function createHarness() {
       action: request.action,
       payload: request.payload,
       delivered: true,
-    }), firewall),
+    }), firewall, telemetry),
     integrity,
+    telemetry,
   });
 
   return { workspace, handlers };
@@ -211,5 +214,124 @@ describe("api handlers", () => {
     const data = (previewRes.body as { data: { verdict: string; telemetry: { vector: number[] } } }).data;
     expect(data.verdict).toBe("allow");
     expect(data.telemetry.vector).toHaveLength(2080);
+  });
+
+  it("lists, fetches, and compares stored telemetry records", async () => {
+    const { handlers } = await createHarness();
+    await handlers.createIntegrityBaseline(mockRequest({ body: {} }), mockResponse());
+
+    const allowRes = mockResponse();
+    await handlers.previewAction(
+      mockRequest({
+        body: {
+          action: "read_file",
+          requested_by: "aid:retriever",
+          payload: { path: "MEMORY.md" },
+          context: {
+            declared_intent: "inspect memory only",
+            sources: [{ kind: "user_prompt", label: "user", content: "inspect", stance: "supporting" }],
+          },
+        },
+      }),
+      allowRes,
+    );
+
+    const riskyRes = mockResponse();
+    await handlers.previewAction(
+      mockRequest({
+        body: {
+          action: "external_share",
+          requested_by: "aid:executor",
+          payload: { target: "https://example.com", resource: "memory/task.md" },
+          context: {
+            declared_intent: "share the approved summary",
+            sources: [
+              { kind: "repo_file", label: "AGENTS.md", content: "share", stance: "supporting" },
+              { kind: "user_prompt", label: "user", content: "do not share", stance: "opposing" },
+            ],
+          },
+        },
+      }),
+      riskyRes,
+    );
+
+    const listRes = mockResponse();
+    await handlers.listTelemetry(mockRequest({ query: { limit: "10" } as never }), listRes);
+    const listed = (listRes.body as { data: Array<{ telemetry_id: string }> }).data;
+    expect(listed.length).toBeGreaterThanOrEqual(2);
+
+    const firstTelemetryId = listed[0]!.telemetry_id;
+    const getRes = mockResponse();
+    await handlers.getTelemetry(mockRequest({ params: { telemetryId: firstTelemetryId } }), getRes);
+    expect((getRes.body as { data: { telemetry_id: string } }).data.telemetry_id).toBe(firstTelemetryId);
+
+    const compareRes = mockResponse();
+    await handlers.compareTelemetry(
+      mockRequest({
+        body: {
+          telemetry_ids: listed.slice(0, 2).map((item) => item.telemetry_id),
+        },
+      }),
+      compareRes,
+    );
+    expect((compareRes.body as { data: { telemetry_ids: string[] } }).data.telemetry_ids).toHaveLength(2);
+  });
+
+  it("intercepts MCP-style tool calls and returns a JSON-RPC-shaped policy response", async () => {
+    const { handlers } = await createHarness();
+    await handlers.createIntegrityBaseline(mockRequest({ body: {} }), mockResponse());
+
+    const res = mockResponse();
+    await handlers.interceptMcpTool(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: "demo-1",
+          method: "tools/call",
+          params: {
+            requested_by: "aid:mcp:client",
+            server_name: "github",
+            tool_name: "issues.update",
+            arguments: { status: "closed" },
+            side_effect: true,
+            context: {
+              declared_intent: "inspect the issue only",
+              sources: [{ kind: "user_prompt", label: "user", content: "review only", stance: "supporting" }],
+            },
+          },
+        },
+      }),
+      res,
+    );
+
+    expect(res.statusCode).toBe(403);
+    const data = (res.body as { data: { mcp_response: { error: { message: string } } } }).data;
+    expect(data.mcp_response.error.message).toContain("Blocked by Aegis ATV");
+  });
+
+  it("attests reviewer outputs and marks mismatches as untrusted", async () => {
+    const { handlers } = await createHarness();
+    const res = mockResponse();
+
+    await handlers.attestReviewers(
+      mockRequest({
+        body: {
+          artifact_id: "pr-1",
+          primary: {
+            reviewer_id: "aid:reviewer:1",
+            output: "Approve after docs update.",
+            verdict: "approve",
+          },
+          secondary: {
+            reviewer_id: "aid:reviewer:2",
+            output: "Reject because the docs are incomplete.",
+            verdict: "reject",
+          },
+        },
+      }),
+      res,
+    );
+
+    expect((res.body as { data: { trusted: boolean } }).data.trusted).toBe(false);
   });
 });

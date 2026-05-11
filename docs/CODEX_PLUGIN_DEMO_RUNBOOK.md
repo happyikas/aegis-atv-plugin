@@ -152,6 +152,63 @@ Important:
 - then run the risky preview again
 - in rehearsal, this sequence cleanly upgraded the risky action from `require_approval` to `block`
 
+### Step 6: Show MCP-style interception
+
+Run:
+
+```bash
+curl -X POST http://localhost:4187/mcp/intercept \
+  -H 'content-type: application/json' \
+  -d '{
+    "id":"demo-mcp-1",
+    "tool_name":"external_share",
+    "arguments":{"target":"https://partner.example/upload","resource":"memory/task-001.md"},
+    "context":{
+      "requested_by":"aid:mcp:client",
+      "declared_intent":"summarize the workspace only",
+      "side_effect":true,
+      "sources":[
+        {"kind":"user_prompt","label":"operator request","content":"review only, do not publish","stance":"supporting"}
+      ]
+    }
+  }'
+```
+
+Point out:
+
+- the response is shaped like a policy-aware MCP tool result
+- `allow` becomes a forwarded result, while risky or conflicting calls stay in-band as structured errors
+- this is the cleanest bridge from the current demo into real MCP transport interception
+
+### Step 7: Show reviewer cross-attestation
+
+Run:
+
+```bash
+curl -X POST http://localhost:4187/reviewer/attest \
+  -H 'content-type: application/json' \
+  -d '{
+    "left":{
+      "reviewer_id":"aid:reviewer:1",
+      "verdict":"block",
+      "summary":"The tool call attempts to publish outside the workspace.",
+      "provenance":[{"kind":"user_prompt","label":"operator request","content":"review only","stance":"supporting"}]
+    },
+    "right":{
+      "reviewer_id":"aid:reviewer:2",
+      "verdict":"allow",
+      "summary":"The requested action appears safe to continue.",
+      "provenance":[{"kind":"repo_file","label":"AGENTS.md","content":"do not exfiltrate workspace data","stance":"supporting"}]
+    }
+  }'
+```
+
+Point out:
+
+- `trusted: false` should appear because the reviewers disagree on the verdict
+- the product can score semantic divergence and provenance overlap, not just perform a string compare
+- this is the bridge into reviewer consensus, arbitration, and stronger attestation products later
+
 ## Codex plugin installation story
 
 For a product framing demo, explain the intended flow:
@@ -159,6 +216,7 @@ For a product framing demo, explain the intended flow:
 1. Install the plugin package from the repo-local marketplace entry.
 2. Use the `aegis-atv-demo` skill to preview actions before execution.
 3. Route high-risk actions through approval and replay only after a human or governance step.
+4. Extend the same control plane to MCP tool interception and reviewer cross-attestation without changing the operator story.
 
 ## Reset after the demo
 

@@ -7,6 +7,7 @@ import { OpenClawWorkspaceAdapter } from "../adapters/openclaw-workspace.js";
 import { ApprovalQueue } from "../core/approval-queue.js";
 import { ActionFirewall } from "../core/action-firewall.js";
 import { IntegrityBaselineStore } from "../core/integrity.js";
+import { TelemetryStore } from "../core/telemetry-store.js";
 import { AuditLogger } from "./audit.js";
 import { CheckpointManager } from "./checkpoint.js";
 import { startWorkspaceWatcher } from "./watcher.js";
@@ -32,8 +33,9 @@ async function main(): Promise<void> {
   const audit = new AuditLogger(dataRoot);
   const checkpoints = new CheckpointManager(workspace, dataRoot);
   const integrity = new IntegrityBaselineStore(dataRoot, process.cwd());
+  const telemetry = new TelemetryStore(dataRoot);
   const firewall = new ActionFirewall(integrity);
-  const actions = new OpenClawActionHarness(approvals, audit, demoExecutor, firewall);
+  const actions = new OpenClawActionHarness(approvals, audit, demoExecutor, firewall, telemetry);
 
   await workspace.scan();
   await integrity.createBaseline().catch(() => {
@@ -48,6 +50,7 @@ async function main(): Promise<void> {
     checkpoints,
     actions,
     integrity,
+    telemetry,
   });
 
   app.listen(port, () => {

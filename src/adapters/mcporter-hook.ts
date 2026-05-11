@@ -2,6 +2,7 @@ import type { ApprovalQueue } from "../core/approval-queue.js";
 import { ActionFirewall } from "../core/action-firewall.js";
 import type { AuditLogger } from "../core/audit.js";
 import { parseActionPayload } from "../core/schema.js";
+import type { TelemetryStore } from "../core/telemetry-store.js";
 import type { ActionExecutionResult, ActionRequest } from "../core/types.js";
 
 export type ActionExecutor = (request: ActionRequest) => Promise<unknown>;
@@ -12,14 +13,17 @@ export class OpenClawActionHarness {
     private readonly audit: AuditLogger,
     private readonly executor: ActionExecutor,
     private readonly firewall: ActionFirewall = new ActionFirewall(),
+    private readonly telemetry?: TelemetryStore,
   ) {}
 
   async preview(request: ActionRequest) {
     const validatedPayload = parseActionPayload(request.action, request.payload);
-    return this.firewall.evaluate({
+    const evaluation = await this.firewall.evaluate({
       ...request,
       payload: validatedPayload,
     });
+    await this.telemetry?.record("preview", { ...request, payload: validatedPayload }, evaluation);
+    return evaluation;
   }
 
   async intercept(request: ActionRequest): Promise<ActionExecutionResult> {
@@ -36,13 +40,15 @@ export class OpenClawActionHarness {
         signals: evaluation.signals,
       });
 
-      return {
+      const result = {
         executed: false,
         queued: false,
         action: validatedRequest.action,
         reason: "action_blocked_by_firewall",
         evaluation,
       };
+      await this.telemetry?.record("blocked", validatedRequest, evaluation, result);
+      return result;
     }
 
     if (evaluation.verdict === "require_approval") {
@@ -58,7 +64,7 @@ export class OpenClawActionHarness {
         signals: evaluation.signals,
       });
 
-      return {
+      const result = {
         executed: false,
         queued: true,
         action: validatedRequest.action,
@@ -66,6 +72,8 @@ export class OpenClawActionHarness {
         reason: "action_requires_approval",
         evaluation,
       };
+      await this.telemetry?.record("queued_for_approval", validatedRequest, evaluation, result);
+      return result;
     }
 
     const output = await this.executor(validatedRequest);
@@ -75,13 +83,15 @@ export class OpenClawActionHarness {
       telemetry_id: evaluation.telemetry.telemetry_id,
     });
 
-    return {
+    const result = {
       executed: true,
       queued: false,
       action: validatedRequest.action,
       output,
       evaluation,
     };
+    await this.telemetry?.record("executed", validatedRequest, evaluation, result);
+    return result;
   }
 
   async replayApproved(approvalId: string): Promise<ActionExecutionResult> {

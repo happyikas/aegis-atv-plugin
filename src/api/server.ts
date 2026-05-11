@@ -7,6 +7,7 @@ import type { AuditLogger } from "../core/audit.js";
 import type { CheckpointManager } from "../daemon/checkpoint.js";
 import type { OpenClawWorkspaceAdapter } from "../adapters/openclaw-workspace.js";
 import type { IntegrityBaselineStore } from "../core/integrity.js";
+import type { TelemetryStore } from "../core/telemetry-store.js";
 
 interface ServerDeps {
   workspace: OpenClawWorkspaceAdapter;
@@ -15,6 +16,7 @@ interface ServerDeps {
   checkpoints: CheckpointManager;
   actions: OpenClawActionHarness;
   integrity: IntegrityBaselineStore;
+  telemetry: TelemetryStore;
 }
 
 export function handleApiError(error: unknown, res: express.Response): void {

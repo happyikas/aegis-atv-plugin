@@ -151,6 +151,12 @@ This MVP does not replace OpenClaw. It wraps the same local workspace and treats
 - `POST /actions/replay/:approvalId`
 - `POST /integrity/baseline`
 - `POST /integrity/check`
+- `GET /telemetry`
+- `GET /telemetry/:telemetryId`
+- `POST /telemetry/compare`
+- `GET /dashboard`
+- `POST /mcp/intercept`
+- `POST /reviewer/attest`
 - `GET /approval-queue`
 - `POST /approval-queue/:id/approve`
 - `POST /approval-queue/:id/reject`
@@ -246,6 +252,61 @@ Use this order for the cleanest 5-minute walkthrough:
 5. mutate one tracked artifact
 6. `POST /integrity/check`
 7. re-run the risky preview and show that integrity drift now upgrades the result to `block`
+
+## Operator surface
+
+The operator-facing telemetry surface now includes:
+
+- `GET /telemetry` for recent telemetry summaries
+- `GET /telemetry/:telemetryId` for one stored evaluation record
+- `POST /telemetry/compare` for comparing a small set of telemetry ids
+- `GET /dashboard` for a lightweight HTML view of recent verdicts and signals
+
+The advanced demo surface also includes:
+
+- `POST /mcp/intercept` for policy-gating an MCP-style tool call and returning a JSON-RPC-shaped allow, approval, or block response
+- `POST /reviewer/attest` for comparing two reviewer outputs and deciding whether their cross-attestation is trustworthy enough to accept
+
+Example MCP-style interception request:
+
+```bash
+curl -X POST http://localhost:4187/mcp/intercept \
+  -H 'content-type: application/json' \
+  -d '{
+    "id":"demo-1",
+    "tool_name":"external_share",
+    "arguments":{"target":"https://partner.example/upload","resource":"memory/task-001.md"},
+    "context":{
+      "requested_by":"aid:mcp:client",
+      "declared_intent":"summarize the workspace only",
+      "side_effect":true,
+      "sources":[
+        {"kind":"user_prompt","label":"operator request","content":"review only, do not publish","stance":"supporting"}
+      ]
+    }
+  }'
+```
+
+Example reviewer cross-attestation request:
+
+```bash
+curl -X POST http://localhost:4187/reviewer/attest \
+  -H 'content-type: application/json' \
+  -d '{
+    "left":{
+      "reviewer_id":"aid:reviewer:1",
+      "verdict":"block",
+      "summary":"The tool call attempts to publish outside the workspace.",
+      "provenance":[{"kind":"user_prompt","label":"operator request","content":"review only","stance":"supporting"}]
+    },
+    "right":{
+      "reviewer_id":"aid:reviewer:2",
+      "verdict":"block",
+      "summary":"The requested action would exfiltrate content beyond the approved scope.",
+      "provenance":[{"kind":"repo_file","label":"AGENTS.md","content":"do not exfiltrate workspace data","stance":"supporting"}]
+    }
+  }'
+```
 
 ## Data layout
 

@@ -7,6 +7,7 @@ export const actionNameSchema = z.enum([
   "external_share",
   "read_file",
   "search_memory",
+  "mcp_tool",
 ]);
 
 export const instructionSourceKindSchema = z.enum([
@@ -145,6 +146,14 @@ export const searchMemoryPayloadSchema = z.object({
   limit: z.number().int().positive().max(100).optional(),
 });
 
+export const mcpToolPayloadSchema = z.object({
+  server_name: z.string().min(1),
+  tool_name: z.string().min(1),
+  arguments: z.record(z.unknown()).default({}),
+  read_only: z.boolean().optional(),
+  side_effect: z.boolean().optional(),
+});
+
 export const actionInterceptRequestSchema = z.object({
   action: actionNameSchema,
   requested_by: z.string().default("aid:executor"),
@@ -154,6 +163,63 @@ export const actionInterceptRequestSchema = z.object({
 
 export const integrityArtifactRequestSchema = z.object({
   artifact_paths: z.array(z.string()).optional(),
+});
+
+export const telemetryCompareRequestSchema = z.object({
+  telemetry_ids: z.array(z.string().min(1)).min(2).max(5),
+});
+
+export const mcpInterceptRequestSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number()]),
+  method: z.string().min(1),
+  params: z.object({
+    requested_by: z.string().default("aid:mcp:client"),
+    server_name: z.string().min(1),
+    tool_name: z.string().min(1),
+    arguments: z.record(z.unknown()).optional(),
+    read_only: z.boolean().optional(),
+    side_effect: z.boolean().optional(),
+    context: actionContextSchema,
+  }),
+});
+
+export const reviewerAttestationRequestSchema = z.object({
+  artifact_id: z.string().min(1),
+  primary: z.object({
+    reviewer_id: z.string().min(1),
+    output: z.string().min(1),
+    verdict: z.enum(["approve", "reject", "needs_changes"]),
+    sources: z
+      .array(
+        z.object({
+          kind: instructionSourceKindSchema,
+          label: z.string().min(1),
+          locator: z.string().optional(),
+          content: z.string().optional(),
+          trust_level: z.number().min(0).max(100).optional(),
+          stance: instructionStanceSchema.optional(),
+        }),
+      )
+      .optional(),
+  }),
+  secondary: z.object({
+    reviewer_id: z.string().min(1),
+    output: z.string().min(1),
+    verdict: z.enum(["approve", "reject", "needs_changes"]),
+    sources: z
+      .array(
+        z.object({
+          kind: instructionSourceKindSchema,
+          label: z.string().min(1),
+          locator: z.string().optional(),
+          content: z.string().optional(),
+          trust_level: z.number().min(0).max(100).optional(),
+          stance: instructionStanceSchema.optional(),
+        }),
+      )
+      .optional(),
+  }),
 });
 
 export const restoreRequestSchema = z.object({
@@ -181,5 +247,7 @@ export function parseActionPayload(action: z.infer<typeof actionNameSchema>, pay
       return readFilePayloadSchema.parse(payload);
     case "search_memory":
       return searchMemoryPayloadSchema.parse(payload);
+    case "mcp_tool":
+      return mcpToolPayloadSchema.parse(payload);
   }
 }
