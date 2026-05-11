@@ -211,6 +211,7 @@ For a live demo, focus the audience on those summary fields.
 Do not expand the full `telemetry.vector` unless the audience specifically wants the raw schema-level representation.
 
 For a customer or investor walkthrough, use the full runbook in [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md).
+Use the final pre-demo gate in [docs/FINAL_DEMO_CHECKLIST.md](/Users/chanikpark/Documents/New%20project/docs/FINAL_DEMO_CHECKLIST.md) before changing PR status or going live.
 
 ## Action harness demo
 
