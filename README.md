@@ -207,6 +207,9 @@ The response includes:
 - `telemetry.telemetry_id`
 - `telemetry.vector_sha256`
 
+For a live demo, focus the audience on those summary fields.
+Do not expand the full `telemetry.vector` unless the audience specifically wants the raw schema-level representation.
+
 For a customer or investor walkthrough, use the full runbook in [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md).
 
 ## Action harness demo
@@ -230,6 +233,18 @@ The command bridge contract is simple:
 - stdin receives one JSON object: `{ "action": "...", "payload": { ... } }`
 - stdout must return one JSON object with the execution result
 - non-zero exit codes are treated as bridge failures
+
+## Best live-demo order
+
+Use this order for the cleanest 5-minute walkthrough:
+
+1. `POST /integrity/baseline`
+2. safe preview showing `allow`
+3. risky preview showing `require_approval`
+4. misleading preview showing `block`
+5. mutate one tracked artifact
+6. `POST /integrity/check`
+7. re-run the risky preview and show that integrity drift now upgrades the result to `block`
 
 ## Data layout
 

@@ -64,6 +64,7 @@ Point out:
 - `verdict: allow`
 - low blast radius
 - telemetry id and vector hash
+- avoid expanding the full telemetry vector unless a technical buyer asks for it
 
 ### Step 3: Show a risky action being escalated
 
@@ -136,6 +137,12 @@ curl -X POST http://localhost:4187/integrity/check \
 ```
 
 Then preview another risky action and show the integrity mutation signal appears in the evaluation.
+
+Important:
+
+- do the drift check first
+- then run the risky preview again
+- in rehearsal, this sequence cleanly upgraded the risky action from `require_approval` to `block`
 
 ## Codex plugin installation story
 
