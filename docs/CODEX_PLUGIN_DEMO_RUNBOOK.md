@@ -26,6 +26,11 @@ Use this runbook to demonstrate the Aegis ATV Codex plugin concept as a product,
 
 ## Demo script
 
+If you want a copy-paste version of the three core preview calls, use:
+
+- [scripts/live-demo-preview.sh](/Users/chanikpark/Documents/New%20project/scripts/live-demo-preview.sh)
+- [docs/LIVE_DEMO_TALK_TRACK.md](/Users/chanikpark/Documents/New%20project/docs/LIVE_DEMO_TALK_TRACK.md)
+
 ### Step 1: Show the plugin package
 
 Open:
@@ -64,6 +69,7 @@ Point out:
 - `verdict: allow`
 - low blast radius
 - telemetry id and vector hash
+- aligned trusted intent and no policy conflict
 - avoid expanding the full telemetry vector unless a technical buyer asks for it
 
 ### Step 3: Show a risky action being escalated
@@ -92,6 +98,7 @@ Point out:
 
 - `require_approval`
 - directive-precedence violation
+- risky but still plausibly legitimate
 - explainable signals rather than opaque blocking
 
 ### Step 4: Show a misleading action being blocked
@@ -118,6 +125,7 @@ Point out:
 
 - `block`
 - context/action divergence
+- lower-trust or conflicting instruction context should not win over trusted intent
 - policy triggers before side effects happen
 
 ### Step 5: Show integrity drift changing policy
