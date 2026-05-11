@@ -125,12 +125,34 @@ function actionSummary(action: string, verdict: string, signals: string[]): stri
   return `Aegis ATV reviewed ${action} and returned ${verdict}. Signals: ${signalSummary}.`;
 }
 
+function mcpToolEnvelope(
+  summary: string,
+  structuredContent: unknown,
+  isError: boolean,
+  meta?: Record<string, unknown>,
+) {
+  return {
+    content: mcpTextContent(summary),
+    structuredContent,
+    isError,
+    _meta: {
+      "aegis/summary": summary,
+      "aegis/isError": isError,
+      ...meta,
+    },
+  };
+}
+
 function buildMcpTools() {
   return [
     {
       name: "aegis.preview_action",
       title: "Preview Action",
       description: "Evaluate a candidate action and return Aegis ATV verdict, provenance, divergence, and telemetry without executing it.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
       inputSchema: {
         type: "object",
         required: ["action"],
@@ -146,6 +168,10 @@ function buildMcpTools() {
       name: "aegis.intercept_action",
       title: "Intercept Action",
       description: "Evaluate and, if permitted, execute or queue a candidate action through the Aegis ATV control plane.",
+      annotations: {
+        readOnlyHint: false,
+        destructiveHint: true,
+      },
       inputSchema: {
         type: "object",
         required: ["action"],
@@ -161,6 +187,10 @@ function buildMcpTools() {
       name: "aegis.reviewer_attest",
       title: "Reviewer Cross-Attestation",
       description: "Compare two reviewer outputs and determine whether the pair is trustworthy enough to accept.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
       inputSchema: {
         type: "object",
         required: ["artifact_id", "primary", "secondary"],
@@ -175,6 +205,10 @@ function buildMcpTools() {
       name: "aegis.telemetry_lookup",
       title: "Telemetry Lookup",
       description: "List recent telemetry records or fetch a single telemetry record for operator review.",
+      annotations: {
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
       inputSchema: {
         type: "object",
         properties: {
@@ -372,11 +406,14 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       .hero-metric-value { margin-top: 4px; font-size: 34px; line-height: 1; }
       .hero-metric-subtle { margin-top: 6px; font-size: 13px; color: var(--muted); }
       .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; margin-top: 20px; }
+      .subgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
       .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
       .card { padding: 18px; border-radius: 20px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
       .value { margin-top: 8px; font-size: 30px; font-weight: 700; }
       .stack { display: grid; gap: 12px; }
       .signal-item, .timeline-item { padding: 14px 16px; border-radius: 18px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
+      .mini-list { display: grid; gap: 10px; }
+      .mini-item { padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
       .signal-name { font-weight: 700; margin-bottom: 4px; }
       .signal-bar { margin-top: 10px; height: 8px; background: rgba(20, 32, 45, 0.08); border-radius: 999px; overflow: hidden; }
       .signal-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 999px; }
@@ -394,7 +431,7 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       .muted { color: var(--muted); }
       .tiny { font-size: 12px; }
       @media (max-width: 980px) {
-        .hero, .grid { grid-template-columns: 1fr; }
+        .hero, .grid, .subgrid { grid-template-columns: 1fr; }
         .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       }
       @media (max-width: 640px) {
@@ -442,12 +479,32 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           </div>
         </div>
       </section>
+      <section class="subgrid">
+        <div class="panel rail">
+          <div class="eyebrow">Human approvals</div>
+          <h2>Pending approval queue</h2>
+          <div id="approvals" class="mini-list"></div>
+        </div>
+        <div class="panel rail">
+          <div class="eyebrow">Artifact integrity</div>
+          <h2>Latest drift status</h2>
+          <div id="integrity" class="mini-list"></div>
+        </div>
+      </section>
     </main>
     <script>
       async function load() {
-        const response = await fetch('/telemetry?limit=20');
-        const payload = await response.json();
+        const [telemetryResponse, approvalsResponse, integrityResponse] = await Promise.all([
+          fetch('/telemetry?limit=20'),
+          fetch('/approval-queue'),
+          fetch('/integrity/check', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' }),
+        ]);
+        const payload = await telemetryResponse.json();
+        const approvalsPayload = await approvalsResponse.json();
+        const integrityPayload = await integrityResponse.json();
         const rows = payload.data || [];
+        const approvals = approvalsPayload.data || [];
+        const integrity = integrityPayload.data || integrityPayload;
         const counts = rows.reduce((acc, row) => {
           const key = row.verdict || 'unknown';
           acc.total += 1;
@@ -493,6 +550,16 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           ['Require approval', 'Then escalate to a risky but plausible action to show governance, not blanket blocking.'],
           ['Block', 'Finish with a conflicting action so the audience sees the hard stop before side effects happen.'],
         ].map(([title, body]) => '<div class=\"timeline-item\"><strong>' + title + '</strong><div class=\"muted tiny\">' + body + '</div></div>').join('');
+        document.getElementById('approvals').innerHTML = approvals.length
+          ? approvals.slice(0, 5).map((item) =>
+              '<div class=\"mini-item\"><strong>' + item.action + '</strong><div class=\"muted tiny\">' + item.status + ' · ' + item.requested_by + '</div><div class=\"tiny\"><code>' + item.id + '</code></div></div>'
+            ).join('')
+          : '<div class=\"mini-item\"><strong>No pending approvals</strong><div class=\"muted tiny\">High-risk actions will appear here when escalation is required.</div></div>';
+        document.getElementById('integrity').innerHTML = integrity && integrity.clean === false
+          ? '<div class=\"mini-item\"><strong>Drift detected</strong><div class=\"muted tiny\">' + integrity.mutations.length + ' mutation(s) found in tracked artifacts.</div><div class=\"tiny\">' +
+              integrity.mutations.slice(0, 3).map((mutation) => mutation.status + ': ' + mutation.path).join('<br />') +
+            '</div></div>'
+          : '<div class=\"mini-item\"><strong>Baseline clean</strong><div class=\"muted tiny\">No tracked artifact drift is currently changing policy behavior.</div></div>';
         document.getElementById('rows').innerHTML = rows.map((row) => {
           const verdict = row.verdict || row.event_type;
           return '<tr>' +
@@ -508,6 +575,8 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         document.getElementById('rows').innerHTML = '<tr><td colspan=\"5\">Failed to load telemetry: ' + error.message + '</td></tr>';
         document.getElementById('signals').innerHTML = '<div class=\"signal-item\">Unable to load signals.</div>';
         document.getElementById('heroMetrics').innerHTML = '<div class=\"hero-metric\"><div class=\"hero-metric-label\">Status</div><div class=\"hero-metric-value\">offline</div><div class=\"hero-metric-subtle\">The dashboard could not reach the telemetry endpoint.</div></div>';
+        document.getElementById('approvals').innerHTML = '<div class=\"mini-item\">Approval queue unavailable.</div>';
+        document.getElementById('integrity').innerHTML = '<div class=\"mini-item\">Integrity status unavailable.</div>';
       });
     </script>
   </body>
@@ -545,9 +614,16 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         const actionRequest = actionInterceptRequestSchema.parse(toolArgs);
         const evaluation = await deps.actions.preview(actionRequest);
         res.status(200).json(mcpResult(payload.id, {
-          content: mcpTextContent(actionSummary(actionRequest.action, evaluation.verdict, evaluation.signals)),
-          structuredContent: evaluation,
-          isError: false,
+          ...mcpToolEnvelope(
+            actionSummary(actionRequest.action, evaluation.verdict, evaluation.signals),
+            evaluation,
+            false,
+            {
+              "aegis/verdict": evaluation.verdict,
+              "aegis/telemetryId": evaluation.telemetry.telemetry_id,
+              "aegis/vectorSha256": evaluation.telemetry.vector_sha256,
+            },
+          ),
         }));
         return;
       }
@@ -559,9 +635,21 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         res
           .status(result.evaluation?.verdict === "block" ? 403 : result.queued ? 202 : 200)
           .json(mcpResult(payload.id, {
-            content: mcpTextContent(actionSummary(actionRequest.action, result.evaluation?.verdict ?? "allow", result.evaluation?.signals ?? [])),
-            structuredContent: result,
-            isError,
+            ...mcpToolEnvelope(
+              actionSummary(
+                actionRequest.action,
+                result.evaluation?.verdict ?? "allow",
+                result.evaluation?.signals ?? [],
+              ),
+              result,
+              isError,
+              {
+                "aegis/verdict": result.evaluation?.verdict ?? "allow",
+                "aegis/approvalId": result.approval_id,
+                "aegis/telemetryId": result.evaluation?.telemetry.telemetry_id,
+                "aegis/vectorSha256": result.evaluation?.telemetry.vector_sha256,
+              },
+            ),
           }));
         return;
       }
@@ -570,9 +658,16 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         const request = reviewerAttestationRequestSchema.parse(toolArgs);
         const result = evaluateReviewerAttestation(request);
         res.status(200).json(mcpResult(payload.id, {
-          content: mcpTextContent(`Reviewer attestation for ${request.artifact_id} is ${result.trusted ? "trusted" : "untrusted"}.`),
-          structuredContent: result,
-          isError: !result.trusted,
+          ...mcpToolEnvelope(
+            `Reviewer attestation for ${request.artifact_id} is ${result.trusted ? "trusted" : "untrusted"}.`,
+            result,
+            !result.trusted,
+            {
+              "aegis/artifactId": request.artifact_id,
+              "aegis/provenanceOverlap": result.provenance_overlap,
+              "aegis/semanticDivergence": result.semantic_divergence,
+            },
+          ),
         }));
         return;
       }
@@ -587,9 +682,15 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           ? await deps.telemetry.get(telemetryId)
           : await deps.telemetry.list(limit);
         res.status(result === null ? 404 : 200).json(mcpResult(payload.id, {
-          content: mcpTextContent(telemetryId ? `Fetched telemetry record ${telemetryId}.` : `Fetched ${limit} recent telemetry summaries.`),
-          structuredContent: result,
-          isError: result === null,
+          ...mcpToolEnvelope(
+            telemetryId ? `Fetched telemetry record ${telemetryId}.` : `Fetched ${limit} recent telemetry summaries.`,
+            result,
+            result === null,
+            {
+              "aegis/telemetryId": telemetryId,
+              "aegis/resultCount": Array.isArray(result) ? result.length : result ? 1 : 0,
+            },
+          ),
         }));
         return;
       }

@@ -356,8 +356,15 @@ describe("api handlers", () => {
       res,
     );
 
-    const result = (res.body as { result: { structuredContent: { verdict: string } } }).result;
+    const result = (res.body as {
+      result: {
+        structuredContent: { verdict: string };
+        _meta: { "aegis/verdict": string; "aegis/telemetryId": string };
+      };
+    }).result;
     expect(result.structuredContent.verdict).toBe("allow");
+    expect(result._meta["aegis/verdict"]).toBe("allow");
+    expect(result._meta["aegis/telemetryId"]).toBeTruthy();
   });
 
   it("intercepts MCP-style tool calls and returns a JSON-RPC-shaped policy response", async () => {
@@ -401,6 +408,8 @@ describe("api handlers", () => {
     expect(res.contentType).toBe("html");
     expect(String(res.body)).toContain("Pre-execution trust for agent actions");
     expect(String(res.body)).toContain("Aegis ATV customer demo surface");
+    expect(String(res.body)).toContain("Pending approval queue");
+    expect(String(res.body)).toContain("Latest drift status");
   });
 
   it("attests reviewer outputs and marks mismatches as untrusted", async () => {

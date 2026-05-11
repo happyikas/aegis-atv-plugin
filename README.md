@@ -269,6 +269,12 @@ The advanced demo surface also includes:
 - `POST /mcp/intercept` for policy-gating an MCP-style tool call and returning a JSON-RPC-shaped allow, approval, or block response
 - `POST /reviewer/attest` for comparing two reviewer outputs and deciding whether their cross-attestation is trustworthy enough to accept
 
+The `tools/call` responses now include:
+
+- human-readable `content`
+- machine-readable `structuredContent`
+- `_meta` fields carrying verdict, telemetry id, vector hash, approval id, or attestation metrics depending on the tool
+
 Example realistic MCP transport flow:
 
 ```bash
