@@ -17,18 +17,29 @@ import { CheckpointManager } from "../../daemon/checkpoint.js";
 const tempDirs: string[] = [];
 
 function mockResponse() {
-  return {
+  const response = {
     statusCode: 200,
+    contentType: undefined as string | undefined,
     body: undefined as unknown,
     status(code: number) {
       this.statusCode = code;
+      return this;
+    },
+    type(value: string) {
+      this.contentType = value;
       return this;
     },
     json(payload: unknown) {
       this.body = payload;
       return this;
     },
-  } as Response & { statusCode: number; body: unknown };
+    send(payload: unknown) {
+      this.body = payload;
+      return this;
+    },
+  };
+
+  return response as unknown as Response & { statusCode: number; contentType?: string; body: unknown };
 }
 
 function mockRequest(overrides: Partial<Request> = {}): Request {
@@ -277,6 +288,78 @@ describe("api handlers", () => {
     expect((compareRes.body as { data: { telemetry_ids: string[] } }).data.telemetry_ids).toHaveLength(2);
   });
 
+  it("serves a realistic MCP initialize and tools/list flow", async () => {
+    const { handlers } = await createHarness();
+
+    const initializeRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "initialize",
+          params: {
+            protocolVersion: "2025-03-26",
+            clientInfo: {
+              name: "Codex",
+              version: "1.0.0",
+            },
+          },
+        },
+      }),
+      initializeRes,
+    );
+
+    expect((initializeRes.body as { result: { protocolVersion: string } }).result.protocolVersion).toBe("2025-03-26");
+
+    const listRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: 2,
+          method: "tools/list",
+        },
+      }),
+      listRes,
+    );
+
+    const tools = (listRes.body as { result: { tools: Array<{ name: string }> } }).result.tools;
+    expect(tools.some((tool) => tool.name === "aegis.preview_action")).toBe(true);
+  });
+
+  it("executes an MCP tools/call preview using a realistic MCP wire format", async () => {
+    const { handlers } = await createHarness();
+    await handlers.createIntegrityBaseline(mockRequest({ body: {} }), mockResponse());
+
+    const res = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: "call-1",
+          method: "tools/call",
+          params: {
+            name: "aegis.preview_action",
+            arguments: {
+              action: "read_file",
+              requested_by: "aid:mcp:client",
+              payload: { path: "MEMORY.md" },
+              context: {
+                declared_intent: "inspect canonical memory only",
+                sources: [{ kind: "user_prompt", label: "user", content: "inspect memory", stance: "supporting" }],
+              },
+            },
+          },
+        },
+      }),
+      res,
+    );
+
+    const result = (res.body as { result: { structuredContent: { verdict: string } } }).result;
+    expect(result.structuredContent.verdict).toBe("allow");
+  });
+
   it("intercepts MCP-style tool calls and returns a JSON-RPC-shaped policy response", async () => {
     const { handlers } = await createHarness();
     await handlers.createIntegrityBaseline(mockRequest({ body: {} }), mockResponse());
@@ -307,6 +390,17 @@ describe("api handlers", () => {
     expect(res.statusCode).toBe(403);
     const data = (res.body as { data: { mcp_response: { error: { message: string } } } }).data;
     expect(data.mcp_response.error.message).toContain("Blocked by Aegis ATV");
+  });
+
+  it("renders the customer demo dashboard html", async () => {
+    const { handlers } = await createHarness();
+    const res = mockResponse();
+
+    handlers.telemetryDashboard(mockRequest(), res);
+
+    expect(res.contentType).toBe("html");
+    expect(String(res.body)).toContain("Pre-execution trust for agent actions");
+    expect(String(res.body)).toContain("Aegis ATV customer demo surface");
   });
 
   it("attests reviewer outputs and marks mismatches as untrusted", async () => {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   mcpInterceptRequestSchema,
+  mcpTransportRequestSchema,
   memoryMetadataSchema,
   reviewerAttestationRequestSchema,
 } from "../../core/schema.js";
@@ -57,6 +58,45 @@ describe("memory metadata schema", () => {
     });
 
     expect(parsed.params.tool_name).toBe("pull_request.create");
+  });
+
+  it("accepts a realistic MCP initialize request", () => {
+    const parsed = mcpTransportRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "initialize",
+      params: {
+        protocolVersion: "2025-03-26",
+        clientInfo: {
+          name: "Codex",
+          version: "1.0.0",
+        },
+      },
+    });
+
+    expect(parsed.method).toBe("initialize");
+  });
+
+  it("accepts a realistic MCP tools/call request", () => {
+    const parsed = mcpTransportRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: "call-1",
+      method: "tools/call",
+      params: {
+        name: "aegis.preview_action",
+        arguments: {
+          action: "read_file",
+          requested_by: "aid:mcp:client",
+          payload: { path: "MEMORY.md" },
+        },
+      },
+    });
+
+    expect(parsed.method).toBe("tools/call");
+    if (parsed.method !== "tools/call") {
+      throw new Error("Expected tools/call request");
+    }
+    expect(parsed.params.name).toBe("aegis.preview_action");
   });
 
   it("accepts a reviewer attestation request", () => {

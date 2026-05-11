@@ -184,6 +184,56 @@ export const mcpInterceptRequestSchema = z.object({
   }),
 });
 
+const mcpJsonRpcSchema = z.object({
+  jsonrpc: z.literal("2.0"),
+  id: z.union([z.string(), z.number()]),
+});
+
+export const mcpInitializeRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("initialize"),
+  params: z
+    .object({
+      protocolVersion: z.string().optional(),
+      capabilities: z.record(z.unknown()).optional(),
+      clientInfo: z
+        .object({
+          name: z.string().min(1),
+          version: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
+});
+
+export const mcpToolsListRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("tools/list"),
+  params: z
+    .object({
+      cursor: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const mcpToolsCallRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("tools/call"),
+  params: z.object({
+    name: z.string().min(1),
+    arguments: z.record(z.unknown()).optional(),
+  }),
+});
+
+export const mcpPingRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("ping"),
+  params: z.record(z.unknown()).optional(),
+});
+
+export const mcpTransportRequestSchema = z.discriminatedUnion("method", [
+  mcpInitializeRequestSchema,
+  mcpToolsListRequestSchema,
+  mcpToolsCallRequestSchema,
+  mcpPingRequestSchema,
+]);
+
 export const reviewerAttestationRequestSchema = z.object({
   artifact_id: z.string().min(1),
   primary: z.object({

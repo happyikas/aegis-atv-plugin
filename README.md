@@ -155,6 +155,7 @@ This MVP does not replace OpenClaw. It wraps the same local workspace and treats
 - `GET /telemetry/:telemetryId`
 - `POST /telemetry/compare`
 - `GET /dashboard`
+- `POST /mcp`
 - `POST /mcp/intercept`
 - `POST /reviewer/attest`
 - `GET /approval-queue`
@@ -264,8 +265,41 @@ The operator-facing telemetry surface now includes:
 
 The advanced demo surface also includes:
 
+- `POST /mcp` for a more realistic MCP transport flow with `initialize`, `tools/list`, and `tools/call`
 - `POST /mcp/intercept` for policy-gating an MCP-style tool call and returning a JSON-RPC-shaped allow, approval, or block response
 - `POST /reviewer/attest` for comparing two reviewer outputs and deciding whether their cross-attestation is trustworthy enough to accept
+
+Example realistic MCP transport flow:
+
+```bash
+curl -X POST http://localhost:4187/mcp \
+  -H 'content-type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"initialize",
+    "params":{"protocolVersion":"2025-03-26","clientInfo":{"name":"Codex","version":"1.0.0"}}
+  }'
+```
+
+```bash
+curl -X POST http://localhost:4187/mcp \
+  -H 'content-type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":2,
+    "method":"tools/call",
+    "params":{
+      "name":"aegis.preview_action",
+      "arguments":{
+        "action":"read_file",
+        "requested_by":"aid:mcp:client",
+        "payload":{"path":"MEMORY.md"},
+        "context":{"declared_intent":"inspect canonical memory only"}
+      }
+    }
+  }'
+```
 
 Example MCP-style interception request:
 

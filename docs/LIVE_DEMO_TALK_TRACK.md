@@ -54,6 +54,7 @@ Expected result:
 - JSON-RPC-shaped response
 - policy outcome returned in-band
 - blocked or approval-required tool calls return structured errors instead of silent execution
+- optional `/mcp` path now looks like a miniature real MCP server with `initialize`, `tools/list`, and `tools/call`
 
 Say:
 

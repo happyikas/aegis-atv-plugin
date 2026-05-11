@@ -180,6 +180,44 @@ Point out:
 - `allow` becomes a forwarded result, while risky or conflicting calls stay in-band as structured errors
 - this is the cleanest bridge from the current demo into real MCP transport interception
 
+If the audience is more technical, show the more realistic MCP transport endpoint:
+
+```bash
+curl -X POST http://localhost:4187/mcp \
+  -H 'content-type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"initialize",
+    "params":{"protocolVersion":"2025-03-26","clientInfo":{"name":"Codex","version":"1.0.0"}}
+  }'
+```
+
+```bash
+curl -X POST http://localhost:4187/mcp \
+  -H 'content-type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":"call-1",
+    "method":"tools/call",
+    "params":{
+      "name":"aegis.preview_action",
+      "arguments":{
+        "action":"read_file",
+        "requested_by":"aid:mcp:client",
+        "payload":{"path":"MEMORY.md"},
+        "context":{"declared_intent":"inspect canonical memory only"}
+      }
+    }
+  }'
+```
+
+Point out:
+
+- this endpoint now behaves like a tiny MCP server instead of a custom shim
+- `initialize`, `tools/list`, and `tools/call` are enough to make the demo feel familiar to MCP-aware buyers
+- the Aegis policy still shows up in `structuredContent`, not as an afterthought
+
 ### Step 7: Show reviewer cross-attestation
 
 Run:

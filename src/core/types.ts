@@ -284,6 +284,52 @@ export interface McpInterceptRequest {
   };
 }
 
+export interface McpInitializeRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: "initialize";
+  params?: {
+    protocolVersion?: string;
+    capabilities?: Record<string, unknown>;
+    clientInfo?: {
+      name: string;
+      version?: string;
+    };
+  };
+}
+
+export interface McpToolsListRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: "tools/list";
+  params?: {
+    cursor?: string;
+  };
+}
+
+export interface McpToolsCallRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: "tools/call";
+  params: {
+    name: string;
+    arguments?: Record<string, unknown>;
+  };
+}
+
+export interface McpPingRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: "ping";
+  params?: Record<string, unknown>;
+}
+
+export type McpTransportRequest =
+  | McpInitializeRequest
+  | McpToolsListRequest
+  | McpToolsCallRequest
+  | McpPingRequest;
+
 export interface ReviewerAttestationRequest {
   artifact_id: string;
   primary: {
