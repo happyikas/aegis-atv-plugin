@@ -2,6 +2,12 @@
 
 This repo packages a demo-ready Codex plugin profile for the AegisData ATV concept described in the attached patent drafts.
 
+## Product framing
+
+- Entry point: Codex plugin package
+- Enforcement engine: local Aegis ATV daemon
+- Evidence surface: verdicts, telemetry ids, vector hashes, provenance, and integrity checks
+
 ## What the demo plugin does
 
 - evaluates agent actions before execution
@@ -32,3 +38,8 @@ This version is optimized for:
 - customer trust and compliance demos
 - investor storytelling around defensible agent infrastructure
 - engineering validation of product shape before deeper hardware integration
+
+## See also
+
+- Install notes: [INSTALL.md](/Users/chanikpark/Documents/New%20project/plugins/aegis-atv/INSTALL.md)
+- Live demo runbook: [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md)

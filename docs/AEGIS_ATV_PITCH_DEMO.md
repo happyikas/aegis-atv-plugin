@@ -30,6 +30,20 @@ Aegis ATV is a trust layer for autonomous agents that decides, before an action 
 - Call `POST /integrity/check`
 - Show that follow-on action preview now reflects mutated artifacts
 
+## What to emphasize on the call
+
+### For customers
+
+- "You do not need to rip out your current agent runtime."
+- "This sits in front of high-risk actions and adds explainable control."
+- "The same evidence surface can support internal governance and future compliance asks."
+
+### For investors
+
+- "This is the software wedge that proves the product behavior now."
+- "The same control plane can later anchor hardware attestation and cross-tenant intelligence."
+- "The patent story is already visible in a runnable branch, not just in slides."
+
 ## Pitch points for customers
 
 - Works with existing agent runtimes instead of replacing them
@@ -45,3 +59,9 @@ Aegis ATV is a trust layer for autonomous agents that decides, before an action 
 ## Suggested GitHub demo branch
 
 - `codex/aegis-atv-demo`
+
+## Supporting assets
+
+- Product overview and setup: [README.md](/Users/chanikpark/Documents/New%20project/README.md)
+- Codex plugin package: [plugins/aegis-atv/README.md](/Users/chanikpark/Documents/New%20project/plugins/aegis-atv/README.md)
+- Live runbook: [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md)

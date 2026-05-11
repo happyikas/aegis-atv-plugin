@@ -1,5 +1,15 @@
 # AegIsDATA-lite for macOS + OpenClaw MVP
 
+Aegis ATV is a software-first trust layer for autonomous agents. This repo turns the attached patent concepts into a working demo that can decide, before an agent action runs, whether to `allow`, `require_approval`, or `block`, while emitting explainable telemetry and integrity evidence.
+
+## Why this matters
+
+- For customers: it adds pre-commit control, audit evidence, and action gating without replacing the existing agent runtime.
+- For investors: it shows a near-term software wedge that can expand into hardware attestation, MCP enforcement, and privacy-preserving telemetry products.
+- For engineering teams: it provides a runnable MVP for action firewalling, provenance-aware policy, and ATV-style telemetry.
+
+## What this demo includes
+
 Local file-backed harness that wraps an existing OpenClaw workspace with:
 
 - memory metadata sidecars
@@ -14,6 +24,31 @@ Local file-backed harness that wraps an existing OpenClaw workspace with:
 - checkpoint and restore
 - file watching
 - local REST API
+
+## Demo outcomes
+
+Within one short demo, you can show:
+
+- a normal agent action being allowed
+- a risky action being sent to approval
+- a misleading action being blocked before execution
+- telemetry ids and vector hashes being generated per action review
+- instruction-source provenance influencing policy decisions
+- build-to-runtime artifact drift causing policy escalation
+
+## Audience-specific message
+
+### Customer message
+
+- Keep your existing agent stack.
+- Add a policy and evidence layer in front of risky actions.
+- Reduce trust in opaque agent behavior by making decisions inspectable.
+
+### Investor message
+
+- The product can start as software and land quickly.
+- The architecture naturally expands into hardware-rooted telemetry and attestation.
+- The IP is visible as product behavior, not just as a filing narrative.
 
 ## Quick start
 
@@ -171,6 +206,8 @@ The response includes:
 - `integrity`
 - `telemetry.telemetry_id`
 - `telemetry.vector_sha256`
+
+For a customer or investor walkthrough, use the full runbook in [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md).
 
 ## Action harness demo
 
