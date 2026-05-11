@@ -1,0 +1,20 @@
+{
+  "name": "AegisData Local Marketplace",
+  "interface": {
+    "displayName": "AegisData Plugins"
+  },
+  "plugins": [
+    {
+      "name": "aegis-atv",
+      "source": {
+        "source": "local",
+        "path": "./plugins/aegis-atv"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Security"
+    }
+  ]
+}

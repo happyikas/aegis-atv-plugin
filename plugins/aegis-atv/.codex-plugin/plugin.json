@@ -1,0 +1,41 @@
+{
+  "name": "aegis-atv",
+  "version": "0.1.0",
+  "description": "AegisData ATV guardrail and telemetry plugin for Codex-aligned agent workflows",
+  "author": {
+    "name": "AegisData, Inc.",
+    "url": "https://github.com/happyikas"
+  },
+  "homepage": "https://github.com/happyikas/aegis-atv-plugin",
+  "repository": "https://github.com/happyikas/aegis-atv-plugin",
+  "license": "Proprietary",
+  "keywords": [
+    "aegisdata",
+    "atv",
+    "agent-telemetry",
+    "guardrails",
+    "codex"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Aegis ATV",
+    "developerName": "AegisData",
+    "shortDescription": "Pre-commit action gating, telemetry vectors, and artifact integrity checks for agent runs",
+    "longDescription": "Aegis ATV adds patent-aligned action firewalling, Agent Telemetry Vector generation, provenance-aware gating, and build-to-runtime artifact integrity checks for Codex-style agent workflows.",
+    "category": "Security",
+    "capabilities": [
+      "agent-telemetry",
+      "approval-gating",
+      "artifact-integrity",
+      "demo-simulation"
+    ],
+    "websiteURL": "https://github.com/happyikas/aegis-atv-plugin",
+    "privacyPolicyURL": "https://github.com/happyikas/aegis-atv-plugin",
+    "termsOfServiceURL": "https://github.com/happyikas/aegis-atv-plugin",
+    "brandColor": "#14532D",
+    "defaultPrompt": [
+      "Evaluate a proposed agent tool action with Aegis ATV and explain whether it should be allowed, blocked, or sent to approval."
+    ],
+    "screenshots": []
+  }
+}

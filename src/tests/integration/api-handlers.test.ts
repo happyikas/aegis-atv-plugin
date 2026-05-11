@@ -1,0 +1,215 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import type { Request, Response } from "express";
+import { afterEach, describe, expect, it } from "vitest";
+import { OpenClawActionHarness } from "../../adapters/mcporter-hook.js";
+import { createRouteHandlers } from "../../api/routes.js";
+import { handleApiError } from "../../api/server.js";
+import { OpenClawWorkspaceAdapter } from "../../adapters/openclaw-workspace.js";
+import { ApprovalQueue } from "../../core/approval-queue.js";
+import { ActionFirewall } from "../../core/action-firewall.js";
+import { IntegrityBaselineStore } from "../../core/integrity.js";
+import { AuditLogger } from "../../daemon/audit.js";
+import { CheckpointManager } from "../../daemon/checkpoint.js";
+
+const tempDirs: string[] = [];
+
+function mockResponse() {
+  return {
+    statusCode: 200,
+    body: undefined as unknown,
+    status(code: number) {
+      this.statusCode = code;
+      return this;
+    },
+    json(payload: unknown) {
+      this.body = payload;
+      return this;
+    },
+  } as Response & { statusCode: number; body: unknown };
+}
+
+function mockRequest(overrides: Partial<Request> = {}): Request {
+  return {
+    body: {},
+    params: {},
+    ...overrides,
+  } as Request;
+}
+
+async function createHarness() {
+  const workspaceRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aegis-api-workspace-"));
+  const dataRoot = await fs.mkdtemp(path.join(os.tmpdir(), "aegis-api-data-"));
+  tempDirs.push(workspaceRoot, dataRoot);
+
+  await fs.mkdir(path.join(workspaceRoot, "memory"), { recursive: true });
+  await fs.writeFile(path.join(workspaceRoot, "MEMORY.md"), "# canonical\n", "utf8");
+  await fs.writeFile(path.join(workspaceRoot, "memory", "task.md"), "# task\n", "utf8");
+
+  const workspace = new OpenClawWorkspaceAdapter(workspaceRoot);
+  await workspace.scan();
+  const approvals = new ApprovalQueue(dataRoot);
+  const audit = new AuditLogger(dataRoot);
+  const integrity = new IntegrityBaselineStore(dataRoot, process.cwd());
+  const firewall = new ActionFirewall(integrity);
+
+  const handlers = createRouteHandlers({
+    workspace,
+    approvals,
+    audit,
+    checkpoints: new CheckpointManager(workspace, dataRoot),
+    actions: new OpenClawActionHarness(approvals, audit, async (request) => ({
+      action: request.action,
+      payload: request.payload,
+      delivered: true,
+    }), firewall),
+    integrity,
+  });
+
+  return { workspace, handlers };
+}
+
+describe("api handlers", () => {
+  afterEach(async () => {
+    await Promise.all(tempDirs.splice(0).map((dir) => fs.rm(dir, { recursive: true, force: true })));
+  });
+
+  it("serves memories, verifies them, and quarantines with consistent JSON responses", async () => {
+    const { workspace, handlers } = await createHarness();
+    const task = (await workspace.scan()).find((item) => item.metadata.source_path === "memory/task.md");
+    expect(task).toBeDefined();
+
+    const listRes = mockResponse();
+    await handlers.listMemories(mockRequest(), listRes);
+    expect(listRes.statusCode).toBe(200);
+    expect((listRes.body as { ok: boolean }).ok).toBe(true);
+
+    const getRes = mockResponse();
+    await handlers.getMemory(mockRequest({ params: { id: task!.metadata.memory_id } }), getRes);
+    expect((getRes.body as { data: { metadata: { source_path: string } } }).data.metadata.source_path).toBe(
+      "memory/task.md",
+    );
+
+    const verifyRes = mockResponse();
+    await handlers.verifyMemory(mockRequest({ params: { id: task!.metadata.memory_id } }), verifyRes);
+    expect((verifyRes.body as { data: { state: string } }).data.state).toBe("verified");
+
+    const quarantineRes = mockResponse();
+    await handlers.quarantineMemory(
+      mockRequest({ params: { id: task!.metadata.memory_id }, body: {} }),
+      quarantineRes,
+    );
+    expect((quarantineRes.body as { data: { state: string } }).data.state).toBe("quarantined");
+  });
+
+  it("creates checkpoints, restores them, and manages approval queue endpoints", async () => {
+    const { workspace, handlers } = await createHarness();
+    const task = (await workspace.scan()).find((item) => item.metadata.source_path === "memory/task.md");
+    expect(task).toBeDefined();
+
+    const checkpointRes = mockResponse();
+    await handlers.createCheckpoint(mockRequest(), checkpointRes);
+    const checkpointId = (checkpointRes.body as { data: { checkpoint_id: string } }).data.checkpoint_id;
+    expect(checkpointRes.statusCode).toBe(201);
+
+    await handlers.verifyMemory(mockRequest({ params: { id: task!.metadata.memory_id } }), mockResponse());
+
+    const restoreRes = mockResponse();
+    await handlers.restoreCheckpointByParam(
+      mockRequest({ params: { checkpointId: checkpointId }, body: { restore_files: false, force: false } }),
+      restoreRes,
+    );
+    expect((restoreRes.body as { ok: boolean }).ok).toBe(true);
+
+    const createApprovalRes = mockResponse();
+    await handlers.createApproval(
+      mockRequest({
+        body: { action: "send_email", requested_by: "aid:executor", payload: { to: "x" } },
+      }),
+      createApprovalRes,
+    );
+    const approvalId = (createApprovalRes.body as { data: { item: { id: string } } }).data.item.id;
+    expect(createApprovalRes.statusCode).toBe(201);
+
+    const listQueueRes = mockResponse();
+    await handlers.listApprovalQueue(mockRequest(), listQueueRes);
+    expect((listQueueRes.body as { data: unknown[] }).data).toHaveLength(1);
+
+    const approveRes = mockResponse();
+    await handlers.approveQueueItem(mockRequest({ params: { id: approvalId } }), approveRes);
+    expect((approveRes.body as { data: { status: string } }).data.status).toBe("approved");
+  });
+
+  it("returns structured errors for missing memories", async () => {
+    const { handlers } = await createHarness();
+    const res = mockResponse();
+
+    try {
+      await handlers.getMemory(mockRequest({ params: { id: "not-real" } }), res);
+    } catch (error) {
+      handleApiError(error, res);
+    }
+
+    expect(res.statusCode).toBe(404);
+    expect((res.body as { ok: boolean }).ok).toBe(false);
+    expect((res.body as { error: { code: string } }).error.code).toBe("not_found");
+  });
+
+  it("intercepts risky actions, queues them, and replays after approval", async () => {
+    const { handlers } = await createHarness();
+
+    const interceptRes = mockResponse();
+    await handlers.interceptAction(
+      mockRequest({
+        body: {
+          action: "send_email",
+          requested_by: "aid:executor",
+          payload: { to: "demo@example.com" },
+        },
+      }),
+      interceptRes,
+    );
+
+    expect(interceptRes.statusCode).toBe(201);
+    expect((interceptRes.body as { data: { queued: boolean } }).data.queued).toBe(true);
+    const approvalId = (interceptRes.body as { data: { approval_id: string } }).data.approval_id;
+
+    const approveRes = mockResponse();
+    await handlers.approveQueueItem(mockRequest({ params: { id: approvalId } }), approveRes);
+    expect((approveRes.body as { data: { status: string } }).data.status).toBe("approved");
+
+    const replayRes = mockResponse();
+    await handlers.replayApprovedAction(mockRequest({ params: { approvalId } }), replayRes);
+    expect(replayRes.statusCode).toBe(200);
+    expect((replayRes.body as { data: { executed: boolean } }).data.executed).toBe(true);
+  });
+
+  it("creates an integrity baseline and previews actions with telemetry", async () => {
+    const { handlers } = await createHarness();
+
+    const baselineRes = mockResponse();
+    await handlers.createIntegrityBaseline(mockRequest({ body: {} }), baselineRes);
+    expect(baselineRes.statusCode).toBe(201);
+
+    const previewRes = mockResponse();
+    await handlers.previewAction(
+      mockRequest({
+        body: {
+          action: "read_file",
+          requested_by: "aid:retriever",
+          payload: { path: "MEMORY.md" },
+          context: {
+            declared_intent: "inspect canonical memory only",
+            sources: [{ kind: "user_prompt", label: "user", content: "inspect memory", stance: "supporting" }],
+          },
+        },
+      }),
+      previewRes,
+    );
+
+    const data = (previewRes.body as { data: { verdict: string; telemetry: { vector: number[] } } }).data;
+    expect(data.verdict).toBe("allow");
+    expect(data.telemetry.vector).toHaveLength(2080);
+  });
+});

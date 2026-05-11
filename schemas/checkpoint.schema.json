@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CheckpointManifest",
+  "type": "object",
+  "required": ["checkpoint_id", "created_at", "workspace_root", "memory_files"],
+  "properties": {
+    "checkpoint_id": { "type": "string" },
+    "created_at": { "type": "string" },
+    "workspace_root": { "type": "string" },
+    "memory_files": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["source_path", "checksum", "metadata_path", "copied"],
+        "properties": {
+          "source_path": { "type": "string" },
+          "checksum": { "type": "string" },
+          "metadata_path": { "type": "string" },
+          "copied": { "type": "boolean" }
+        }
+      }
+    }
+  }
+}
