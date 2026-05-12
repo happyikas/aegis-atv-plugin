@@ -219,6 +219,10 @@ Do not expand the full `telemetry.vector` unless the audience specifically wants
 
 For a customer or investor walkthrough, use the full runbook in [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md).
 Use the final pre-demo gate in [docs/FINAL_DEMO_CHECKLIST.md](/Users/chanikpark/Documents/New%20project/docs/FINAL_DEMO_CHECKLIST.md) before changing PR status or going live.
+For enterprise-oriented customer demos and operator onboarding, also use:
+
+- [customer value demos](/Users/chanikpark/Documents/New%20project/docs/AEGIS_ATV_CUSTOMER_VALUE_DEMOS.md)
+- [user manual](/Users/chanikpark/Documents/New%20project/docs/AEGIS_ATV_USER_MANUAL.md)
 
 ## Action harness demo
 
@@ -226,6 +230,10 @@ Use the final pre-demo gate in [docs/FINAL_DEMO_CHECKLIST.md](/Users/chanikpark/
 2. Read the returned `approval_id`.
 3. `curl -X POST http://localhost:4187/approval-queue/<approval_id>/approve`
 4. `curl -X POST http://localhost:4187/actions/replay/<approval_id>`
+
+For a pre-bundled customer-value demo script:
+
+- `npm run demo:enterprise`
 
 High-risk actions are queued first. Non-risk actions execute immediately through the demo executor currently wired into the daemon.
 The daemon currently routes execution through an OpenClaw bridge adapter. By default it uses an in-memory bridge, but you can point it at a real local command:
