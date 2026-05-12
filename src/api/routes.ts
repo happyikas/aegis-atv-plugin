@@ -266,6 +266,73 @@ function buildMcpPrompts() {
   ];
 }
 
+async function readMcpResource(uri: string, deps: RouteDeps) {
+  if (uri === "aegis://dashboard/live") {
+    return {
+      uri,
+      mimeType: "text/html",
+      text: "Open /dashboard in a browser for the live customer-facing Aegis ATV board.",
+    };
+  }
+
+  if (uri === "aegis://telemetry/recent") {
+    return {
+      uri,
+      mimeType: "application/json",
+      text: JSON.stringify(await deps.telemetry.list(10), null, 2),
+    };
+  }
+
+  if (uri === "aegis://integrity/latest") {
+    return {
+      uri,
+      mimeType: "application/json",
+      text: JSON.stringify((await deps.integrity.check()) ?? { clean: true, baseline_missing: true }, null, 2),
+    };
+  }
+
+  throw new Error(`Unknown MCP resource: ${uri}`);
+}
+
+function getMcpPrompt(name: string, args?: Record<string, unknown>) {
+  if (name === "aegis_demo_walkthrough") {
+    const audience = typeof args?.audience === "string" ? args.audience : "customer";
+    return {
+      description: "Guide the operator through the core Aegis ATV demo narrative.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+              `Walk through the Aegis ATV live demo for a ${audience} audience. ` +
+              "Show allow, require_approval, and block outcomes, then highlight telemetry evidence and integrity drift.",
+          },
+        },
+      ],
+    };
+  }
+
+  if (name === "aegis_operator_triage") {
+    return {
+      description: "Ask the runtime to summarize operator attention points.",
+      messages: [
+        {
+          role: "user",
+          content: {
+            type: "text",
+            text:
+              "Summarize the latest telemetry, pending approvals, and integrity drift. " +
+              "Explain what an operator should review next and why.",
+          },
+        },
+      ],
+    };
+  }
+
+  throw new Error(`Unknown MCP prompt: ${name}`);
+}
+
 export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
   return {
     health: (_req: Request, res: Response) => {
@@ -453,6 +520,7 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       .hero-metric-subtle { margin-top: 6px; font-size: 13px; color: var(--muted); }
       .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; margin-top: 20px; }
       .subgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
+      .fullwidth { margin-top: 20px; }
       .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
       .card { padding: 18px; border-radius: 20px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
       .value { margin-top: 8px; font-size: 30px; font-weight: 700; }
@@ -546,6 +614,16 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           <div id="integrity" class="mini-list"></div>
         </div>
       </section>
+      <section class="fullwidth">
+        <div class="panel rail">
+          <div class="eyebrow">Telemetry compare</div>
+          <h2>Recent verdict comparison</h2>
+          <div class="actions">
+            <button class="primary" id="compareTelemetryBtn">Compare latest two</button>
+          </div>
+          <div id="compare" class="mini-list"></div>
+        </div>
+      </section>
     </main>
     <script>
       async function resolveApproval(id, decision) {
@@ -566,6 +644,37 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       }
       async function refreshIntegrity() {
         await load();
+      }
+      async function replayApproved(id) {
+        await fetch('/actions/replay/' + encodeURIComponent(id), {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        });
+        await load();
+      }
+      async function compareRecentTelemetry() {
+        const telemetryResponse = await fetch('/telemetry?limit=2');
+        const telemetryPayload = await telemetryResponse.json();
+        const rows = telemetryPayload.data || [];
+        if (rows.length < 2) {
+          document.getElementById('compare').innerHTML = '<div class=\"mini-item\"><strong>Not enough telemetry yet</strong><div class=\"muted tiny\">Run at least two previews to compare verdicts.</div></div>';
+          return;
+        }
+        const compareResponse = await fetch('/telemetry/compare', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ telemetry_ids: rows.slice(0, 2).map((row) => row.telemetry_id) }),
+        });
+        const comparePayload = await compareResponse.json();
+        const data = comparePayload.data || {};
+        document.getElementById('compare').innerHTML =
+          '<div class=\"mini-item\"><strong>Shared signals</strong><div class=\"muted tiny\">' +
+          ((data.shared_signals || []).length ? data.shared_signals.join(', ') : 'none') +
+          '</div></div>' +
+          '<div class=\"mini-item\"><strong>Verdicts</strong><div class=\"tiny\">' +
+          (data.verdicts || []).map((item) => (item.telemetry_id + ' -> ' + (item.verdict || 'unknown'))).join('<br />') +
+          '</div></div>';
       }
       async function load() {
         const [telemetryResponse, approvalsResponse, integrityResponse] = await Promise.all([
@@ -629,6 +738,8 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
               '<div class=\"mini-item\"><strong>' + item.action + '</strong><div class=\"muted tiny\">' + item.status + ' · ' + item.requested_by + '</div><div class=\"tiny\"><code>' + item.id + '</code></div>' +
               (item.status === 'pending'
                 ? '<div class=\"actions\"><button class=\"primary\" data-approve=\"' + item.id + '\">Approve</button><button class=\"danger\" data-reject=\"' + item.id + '\">Reject</button></div>'
+                : item.status === 'approved'
+                  ? '<div class=\"actions\"><button class=\"warn\" data-replay=\"' + item.id + '\">Replay approved</button></div>'
                 : '') +
               '</div>'
             ).join('')
@@ -654,15 +765,20 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         document.querySelectorAll('[data-reject]').forEach((button) => {
           button.addEventListener('click', () => resolveApproval(button.getAttribute('data-reject'), 'reject'));
         });
+        document.querySelectorAll('[data-replay]').forEach((button) => {
+          button.addEventListener('click', () => replayApproved(button.getAttribute('data-replay')));
+        });
       }
       document.getElementById('createBaselineBtn').addEventListener('click', createBaseline);
       document.getElementById('checkIntegrityBtn').addEventListener('click', refreshIntegrity);
+      document.getElementById('compareTelemetryBtn').addEventListener('click', compareRecentTelemetry);
       load().catch((error) => {
         document.getElementById('rows').innerHTML = '<tr><td colspan=\"5\">Failed to load telemetry: ' + error.message + '</td></tr>';
         document.getElementById('signals').innerHTML = '<div class=\"signal-item\">Unable to load signals.</div>';
         document.getElementById('heroMetrics').innerHTML = '<div class=\"hero-metric\"><div class=\"hero-metric-label\">Status</div><div class=\"hero-metric-value\">offline</div><div class=\"hero-metric-subtle\">The dashboard could not reach the telemetry endpoint.</div></div>';
         document.getElementById('approvals').innerHTML = '<div class=\"mini-item\">Approval queue unavailable.</div>';
         document.getElementById('integrity').innerHTML = '<div class=\"mini-item\">Integrity status unavailable.</div>';
+        document.getElementById('compare').innerHTML = '<div class=\"mini-item\">Telemetry compare unavailable.</div>';
       });
     </script>
   </body>
@@ -701,6 +817,21 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
 
       if (payload.method === "prompts/list") {
         res.status(200).json(mcpResult(payload.id, { prompts: buildMcpPrompts() }));
+        return;
+      }
+
+      if (payload.method === "resources/read") {
+        const resource = await readMcpResource(payload.params.uri, deps);
+        res.status(200).json(mcpResult(payload.id, { contents: [resource] }));
+        return;
+      }
+
+      if (payload.method === "prompts/get") {
+        const prompt = getMcpPrompt(payload.params.name, payload.params.arguments);
+        res.status(200).json(mcpResult(payload.id, {
+          name: payload.params.name,
+          ...prompt,
+        }));
         return;
       }
 

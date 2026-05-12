@@ -354,6 +354,44 @@ describe("api handlers", () => {
     );
     const prompts = (promptsRes.body as { result: { prompts: Array<{ name: string }> } }).result.prompts;
     expect(prompts.some((prompt) => prompt.name === "aegis_demo_walkthrough")).toBe(true);
+
+    const resourceReadRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: 5,
+          method: "resources/read",
+          params: {
+            uri: "aegis://telemetry/recent",
+          },
+        },
+      }),
+      resourceReadRes,
+    );
+    const resourceContents = (resourceReadRes.body as { result: { contents: Array<{ uri: string }> } }).result.contents;
+    expect(resourceContents[0]?.uri).toBe("aegis://telemetry/recent");
+
+    const promptGetRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: 6,
+          method: "prompts/get",
+          params: {
+            name: "aegis_demo_walkthrough",
+            arguments: {
+              audience: "customer",
+            },
+          },
+        },
+      }),
+      promptGetRes,
+    );
+    const promptResult = (promptGetRes.body as { result: { name: string; messages: Array<{ content: { text: string } }> } }).result;
+    expect(promptResult.name).toBe("aegis_demo_walkthrough");
+    expect(promptResult.messages[0]?.content.text).toContain("customer");
   });
 
   it("executes an MCP tools/call preview using a realistic MCP wire format", async () => {
@@ -440,6 +478,8 @@ describe("api handlers", () => {
     expect(String(res.body)).toContain("Latest drift status");
     expect(String(res.body)).toContain("Create baseline");
     expect(String(res.body)).toContain("Approve");
+    expect(String(res.body)).toContain("Replay approved");
+    expect(String(res.body)).toContain("Compare latest two");
   });
 
   it("attests reviewer outputs and marks mismatches as untrusted", async () => {

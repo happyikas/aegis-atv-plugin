@@ -240,6 +240,21 @@ export const mcpPromptsListRequestSchema = mcpJsonRpcSchema.extend({
     .optional(),
 });
 
+export const mcpResourcesReadRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("resources/read"),
+  params: z.object({
+    uri: z.string().min(1),
+  }),
+});
+
+export const mcpPromptsGetRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("prompts/get"),
+  params: z.object({
+    name: z.string().min(1),
+    arguments: z.record(z.unknown()).optional(),
+  }),
+});
+
 export const mcpPingRequestSchema = mcpJsonRpcSchema.extend({
   method: z.literal("ping"),
   params: z.record(z.unknown()).optional(),
@@ -251,6 +266,8 @@ export const mcpTransportRequestSchema = z.discriminatedUnion("method", [
   mcpToolsCallRequestSchema,
   mcpResourcesListRequestSchema,
   mcpPromptsListRequestSchema,
+  mcpResourcesReadRequestSchema,
+  mcpPromptsGetRequestSchema,
   mcpPingRequestSchema,
 ]);
 

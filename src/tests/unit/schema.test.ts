@@ -115,6 +115,29 @@ describe("memory metadata schema", () => {
     expect(prompts.method).toBe("prompts/list");
   });
 
+  it("accepts MCP resources/read and prompts/get requests", () => {
+    const resourceRead = mcpTransportRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: 5,
+      method: "resources/read",
+      params: {
+        uri: "aegis://telemetry/recent",
+      },
+    });
+    const promptGet = mcpTransportRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: 6,
+      method: "prompts/get",
+      params: {
+        name: "aegis_demo_walkthrough",
+        arguments: { audience: "customer" },
+      },
+    });
+
+    expect(resourceRead.method).toBe("resources/read");
+    expect(promptGet.method).toBe("prompts/get");
+  });
+
   it("accepts a reviewer attestation request", () => {
     const parsed = reviewerAttestationRequestSchema.parse({
       artifact_id: "pr-1",
