@@ -275,6 +275,17 @@ The `tools/call` responses now include:
 - machine-readable `structuredContent`
 - `_meta` fields carrying verdict, telemetry id, vector hash, approval id, or attestation metrics depending on the tool
 
+The `POST /mcp` transport now also supports:
+
+- `resources/list` for dashboard and telemetry resources
+- `prompts/list` for reusable demo and operator triage prompts
+
+The dashboard now includes live demo controls for:
+
+- approving or rejecting pending approvals
+- creating a fresh integrity baseline
+- re-running integrity drift checks without leaving the page
+
 Example realistic MCP transport flow:
 
 ```bash

@@ -317,6 +317,24 @@ export interface McpToolsCallRequest {
   };
 }
 
+export interface McpResourcesListRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: "resources/list";
+  params?: {
+    cursor?: string;
+  };
+}
+
+export interface McpPromptsListRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: "prompts/list";
+  params?: {
+    cursor?: string;
+  };
+}
+
 export interface McpPingRequest {
   jsonrpc: "2.0";
   id: string | number;
@@ -328,6 +346,8 @@ export type McpTransportRequest =
   | McpInitializeRequest
   | McpToolsListRequest
   | McpToolsCallRequest
+  | McpResourcesListRequest
+  | McpPromptsListRequest
   | McpPingRequest;
 
 export interface ReviewerAttestationRequest {

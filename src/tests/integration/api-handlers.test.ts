@@ -326,6 +326,34 @@ describe("api handlers", () => {
 
     const tools = (listRes.body as { result: { tools: Array<{ name: string }> } }).result.tools;
     expect(tools.some((tool) => tool.name === "aegis.preview_action")).toBe(true);
+
+    const resourcesRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "resources/list",
+        },
+      }),
+      resourcesRes,
+    );
+    const resources = (resourcesRes.body as { result: { resources: Array<{ uri: string }> } }).result.resources;
+    expect(resources.some((resource) => resource.uri === "aegis://dashboard/live")).toBe(true);
+
+    const promptsRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: 4,
+          method: "prompts/list",
+        },
+      }),
+      promptsRes,
+    );
+    const prompts = (promptsRes.body as { result: { prompts: Array<{ name: string }> } }).result.prompts;
+    expect(prompts.some((prompt) => prompt.name === "aegis_demo_walkthrough")).toBe(true);
   });
 
   it("executes an MCP tools/call preview using a realistic MCP wire format", async () => {
@@ -410,6 +438,8 @@ describe("api handlers", () => {
     expect(String(res.body)).toContain("Aegis ATV customer demo surface");
     expect(String(res.body)).toContain("Pending approval queue");
     expect(String(res.body)).toContain("Latest drift status");
+    expect(String(res.body)).toContain("Create baseline");
+    expect(String(res.body)).toContain("Approve");
   });
 
   it("attests reviewer outputs and marks mismatches as untrusted", async () => {

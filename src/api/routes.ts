@@ -220,6 +220,52 @@ function buildMcpTools() {
   ];
 }
 
+function buildMcpResources() {
+  return [
+    {
+      uri: "aegis://dashboard/live",
+      name: "Aegis Live Dashboard",
+      description: "Customer-facing summary of verdicts, approvals, and integrity drift for the current demo runtime.",
+      mimeType: "text/html",
+    },
+    {
+      uri: "aegis://telemetry/recent",
+      name: "Recent Telemetry Summaries",
+      description: "Latest telemetry verdicts and signal summaries recorded by the Aegis ATV runtime.",
+      mimeType: "application/json",
+    },
+    {
+      uri: "aegis://integrity/latest",
+      name: "Latest Integrity Report",
+      description: "Most recent baseline drift status for tracked product and policy artifacts.",
+      mimeType: "application/json",
+    },
+  ];
+}
+
+function buildMcpPrompts() {
+  return [
+    {
+      name: "aegis_demo_walkthrough",
+      title: "Aegis Demo Walkthrough",
+      description: "Guide an operator through allow, require_approval, and block outcomes while highlighting telemetry evidence.",
+      arguments: [
+        {
+          name: "audience",
+          description: "Audience type such as customer, investor, or technical buyer.",
+          required: false,
+        },
+      ],
+    },
+    {
+      name: "aegis_operator_triage",
+      title: "Aegis Operator Triage",
+      description: "Summarize the latest telemetry, pending approvals, and integrity drift so an operator can decide what to review next.",
+      arguments: [],
+    },
+  ];
+}
+
 export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
   return {
     health: (_req: Request, res: Response) => {
@@ -414,6 +460,11 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       .signal-item, .timeline-item { padding: 14px 16px; border-radius: 18px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
       .mini-list { display: grid; gap: 10px; }
       .mini-item { padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+      button { appearance: none; border: 0; border-radius: 999px; padding: 8px 12px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; background: rgba(20, 32, 45, 0.08); color: var(--ink); }
+      button.primary { background: rgba(15, 118, 110, 0.12); color: var(--accent); }
+      button.warn { background: rgba(180, 83, 9, 0.14); color: var(--approval); }
+      button.danger { background: rgba(185, 28, 28, 0.14); color: var(--block); }
       .signal-name { font-weight: 700; margin-bottom: 4px; }
       .signal-bar { margin-top: 10px; height: 8px; background: rgba(20, 32, 45, 0.08); border-radius: 999px; overflow: hidden; }
       .signal-fill { height: 100%; background: linear-gradient(90deg, var(--accent), var(--accent2)); border-radius: 999px; }
@@ -488,11 +539,34 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         <div class="panel rail">
           <div class="eyebrow">Artifact integrity</div>
           <h2>Latest drift status</h2>
+          <div class="actions">
+            <button class="primary" id="createBaselineBtn">Create baseline</button>
+            <button class="warn" id="checkIntegrityBtn">Check drift</button>
+          </div>
           <div id="integrity" class="mini-list"></div>
         </div>
       </section>
     </main>
     <script>
+      async function resolveApproval(id, decision) {
+        await fetch('/approval-queue/' + encodeURIComponent(id) + '/' + decision, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        });
+        await load();
+      }
+      async function createBaseline() {
+        await fetch('/integrity/baseline', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: '{}',
+        });
+        await load();
+      }
+      async function refreshIntegrity() {
+        await load();
+      }
       async function load() {
         const [telemetryResponse, approvalsResponse, integrityResponse] = await Promise.all([
           fetch('/telemetry?limit=20'),
@@ -552,7 +626,11 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         ].map(([title, body]) => '<div class=\"timeline-item\"><strong>' + title + '</strong><div class=\"muted tiny\">' + body + '</div></div>').join('');
         document.getElementById('approvals').innerHTML = approvals.length
           ? approvals.slice(0, 5).map((item) =>
-              '<div class=\"mini-item\"><strong>' + item.action + '</strong><div class=\"muted tiny\">' + item.status + ' · ' + item.requested_by + '</div><div class=\"tiny\"><code>' + item.id + '</code></div></div>'
+              '<div class=\"mini-item\"><strong>' + item.action + '</strong><div class=\"muted tiny\">' + item.status + ' · ' + item.requested_by + '</div><div class=\"tiny\"><code>' + item.id + '</code></div>' +
+              (item.status === 'pending'
+                ? '<div class=\"actions\"><button class=\"primary\" data-approve=\"' + item.id + '\">Approve</button><button class=\"danger\" data-reject=\"' + item.id + '\">Reject</button></div>'
+                : '') +
+              '</div>'
             ).join('')
           : '<div class=\"mini-item\"><strong>No pending approvals</strong><div class=\"muted tiny\">High-risk actions will appear here when escalation is required.</div></div>';
         document.getElementById('integrity').innerHTML = integrity && integrity.clean === false
@@ -570,7 +648,15 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
             '<td><code>' + row.telemetry_id + '</code><br /><span class=\"label\">sha: ' + (row.vector_sha256 || 'n/a') + '</span></td>' +
           '</tr>';
         }).join('');
+        document.querySelectorAll('[data-approve]').forEach((button) => {
+          button.addEventListener('click', () => resolveApproval(button.getAttribute('data-approve'), 'approve'));
+        });
+        document.querySelectorAll('[data-reject]').forEach((button) => {
+          button.addEventListener('click', () => resolveApproval(button.getAttribute('data-reject'), 'reject'));
+        });
       }
+      document.getElementById('createBaselineBtn').addEventListener('click', createBaseline);
+      document.getElementById('checkIntegrityBtn').addEventListener('click', refreshIntegrity);
       load().catch((error) => {
         document.getElementById('rows').innerHTML = '<tr><td colspan=\"5\">Failed to load telemetry: ' + error.message + '</td></tr>';
         document.getElementById('signals').innerHTML = '<div class=\"signal-item\">Unable to load signals.</div>';
@@ -605,6 +691,16 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
 
       if (payload.method === "tools/list") {
         res.status(200).json(mcpResult(payload.id, { tools: buildMcpTools() }));
+        return;
+      }
+
+      if (payload.method === "resources/list") {
+        res.status(200).json(mcpResult(payload.id, { resources: buildMcpResources() }));
+        return;
+      }
+
+      if (payload.method === "prompts/list") {
+        res.status(200).json(mcpResult(payload.id, { prompts: buildMcpPrompts() }));
         return;
       }
 

@@ -222,6 +222,24 @@ export const mcpToolsCallRequestSchema = mcpJsonRpcSchema.extend({
   }),
 });
 
+export const mcpResourcesListRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("resources/list"),
+  params: z
+    .object({
+      cursor: z.string().optional(),
+    })
+    .optional(),
+});
+
+export const mcpPromptsListRequestSchema = mcpJsonRpcSchema.extend({
+  method: z.literal("prompts/list"),
+  params: z
+    .object({
+      cursor: z.string().optional(),
+    })
+    .optional(),
+});
+
 export const mcpPingRequestSchema = mcpJsonRpcSchema.extend({
   method: z.literal("ping"),
   params: z.record(z.unknown()).optional(),
@@ -231,6 +249,8 @@ export const mcpTransportRequestSchema = z.discriminatedUnion("method", [
   mcpInitializeRequestSchema,
   mcpToolsListRequestSchema,
   mcpToolsCallRequestSchema,
+  mcpResourcesListRequestSchema,
+  mcpPromptsListRequestSchema,
   mcpPingRequestSchema,
 ]);
 

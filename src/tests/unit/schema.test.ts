@@ -99,6 +99,22 @@ describe("memory metadata schema", () => {
     expect(parsed.params.name).toBe("aegis.preview_action");
   });
 
+  it("accepts MCP resources/list and prompts/list requests", () => {
+    const resources = mcpTransportRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: 3,
+      method: "resources/list",
+    });
+    const prompts = mcpTransportRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: 4,
+      method: "prompts/list",
+    });
+
+    expect(resources.method).toBe("resources/list");
+    expect(prompts.method).toBe("prompts/list");
+  });
+
   it("accepts a reviewer attestation request", () => {
     const parsed = reviewerAttestationRequestSchema.parse({
       artifact_id: "pr-1",
