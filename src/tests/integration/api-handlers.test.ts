@@ -362,6 +362,20 @@ describe("api handlers", () => {
     const resources = (resourcesRes.body as { result: { resources: Array<{ uri: string }> } }).result.resources;
     expect(resources.some((resource) => resource.uri === "aegis://dashboard/live")).toBe(true);
 
+    const templatesRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: "templates-1",
+          method: "resources/templates/list",
+        },
+      }),
+      templatesRes,
+    );
+    const templates = (templatesRes.body as { result: { resourceTemplates: Array<{ uriTemplate: string }> } }).result.resourceTemplates;
+    expect(templates.some((template) => template.uriTemplate === "aegis://telemetry/{telemetry_id}")).toBe(true);
+
     const promptsRes = mockResponse();
     await handlers.handleMcpTransport(
       mockRequest({
@@ -390,8 +404,10 @@ describe("api handlers", () => {
       }),
       resourceReadRes,
     );
-    const resourceContents = (resourceReadRes.body as { result: { contents: Array<{ uri: string }> } }).result.contents;
-    expect(resourceContents[0]?.uri).toBe("aegis://telemetry/recent");
+    const resourceContents = (resourceReadRes.body as { result: { contents: Array<{ uri: string }>; _meta: { "aegis/resourceUri": string } } }).result;
+    expect(resourceContents._meta["aegis/resourceUri"]).toBe("aegis://telemetry/recent");
+    const resourceRows = resourceContents.contents;
+    expect(resourceRows[0]?.uri).toBe("aegis://telemetry/recent");
 
     const auditResourceRes = mockResponse();
     await handlers.handleMcpTransport(
@@ -520,6 +536,8 @@ describe("api handlers", () => {
     expect(String(res.body)).toContain("Compare latest two");
     expect(String(res.body)).toContain("Selected telemetry drawer");
     expect(String(res.body)).toContain("Recent governance events");
+    expect(String(res.body)).toContain("Pin current detail");
+    expect(String(res.body)).toContain("Refresh audit");
   });
 
   it("attests reviewer outputs and marks mismatches as untrusted", async () => {

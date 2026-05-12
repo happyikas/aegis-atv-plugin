@@ -138,6 +138,16 @@ describe("memory metadata schema", () => {
     expect(promptGet.method).toBe("prompts/get");
   });
 
+  it("accepts MCP resources/templates/list requests", () => {
+    const templates = mcpTransportRequestSchema.parse({
+      jsonrpc: "2.0",
+      id: 7,
+      method: "resources/templates/list",
+    });
+
+    expect(templates.method).toBe("resources/templates/list");
+  });
+
   it("accepts a reviewer attestation request", () => {
     const parsed = reviewerAttestationRequestSchema.parse({
       artifact_id: "pr-1",

@@ -278,8 +278,8 @@ The `tools/call` responses now include:
 The `POST /mcp` transport now also supports:
 
 - `resources/list` for dashboard and telemetry resources
+- `resources/templates/list` for dynamic telemetry and audit URI templates
 - `prompts/list` for reusable demo and operator triage prompts
-- `resources/read` for fetching live dashboard, telemetry, or integrity resource content
 - `resources/read` for fetching live dashboard, telemetry, integrity, or approval audit resource content
 - `prompts/get` for retrieving ready-to-use demo and operator prompt payloads
 
@@ -291,6 +291,7 @@ The dashboard now includes live demo controls for:
 - replaying approved actions
 - comparing the latest two telemetry records
 - opening a telemetry detail drawer and reading the recent approval audit trail
+- pinning a telemetry detail while comparing nearby events and filtering audit trails by event family
 
 Example realistic MCP transport flow:
 

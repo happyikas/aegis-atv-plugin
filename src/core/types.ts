@@ -350,6 +350,15 @@ export interface McpResourcesReadRequest {
   };
 }
 
+export interface McpResourceTemplatesListRequest {
+  jsonrpc: "2.0";
+  id: string | number;
+  method: "resources/templates/list";
+  params?: {
+    cursor?: string;
+  };
+}
+
 export interface McpPromptsGetRequest {
   jsonrpc: "2.0";
   id: string | number;
@@ -374,6 +383,7 @@ export type McpTransportRequest =
   | McpResourcesListRequest
   | McpPromptsListRequest
   | McpResourcesReadRequest
+  | McpResourceTemplatesListRequest
   | McpPromptsGetRequest
   | McpPingRequest;
 

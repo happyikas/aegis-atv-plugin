@@ -144,6 +144,19 @@ function mcpToolEnvelope(
   };
 }
 
+function mcpResourceEnvelope(
+  contents: Array<{ uri: string; mimeType: string; text: string }>,
+  meta?: Record<string, unknown>,
+) {
+  return {
+    contents,
+    _meta: {
+      "aegis/contentCount": contents.length,
+      ...meta,
+    },
+  };
+}
+
 function buildMcpTools() {
   return [
     {
@@ -250,6 +263,23 @@ function buildMcpResources() {
   ];
 }
 
+function buildMcpResourceTemplates() {
+  return [
+    {
+      uriTemplate: "aegis://telemetry/{telemetry_id}",
+      name: "Telemetry Detail Resource",
+      description: "Fetch one telemetry record by telemetry id for detailed operator review.",
+      mimeType: "application/json",
+    },
+    {
+      uriTemplate: "aegis://audit/{event_prefix}",
+      name: "Audit Trail Resource",
+      description: "Fetch recent audit events filtered by event prefix such as approval or checkpoint.",
+      mimeType: "application/json",
+    },
+  ];
+}
+
 function buildMcpPrompts() {
   return [
     {
@@ -303,6 +333,29 @@ async function readMcpResource(uri: string, deps: RouteDeps) {
       uri,
       mimeType: "application/json",
       text: JSON.stringify(await deps.audit.list(12, "approval"), null, 2),
+    };
+  }
+
+  if (uri.startsWith("aegis://telemetry/")) {
+    const telemetryId = decodeURIComponent(uri.slice("aegis://telemetry/".length));
+    const record = await deps.telemetry.get(telemetryId);
+    return {
+      uri,
+      mimeType: "application/json",
+      text: JSON.stringify(
+        record ?? { not_found: true, telemetry_id: telemetryId },
+        null,
+        2,
+      ),
+    };
+  }
+
+  if (uri.startsWith("aegis://audit/")) {
+    const eventPrefix = decodeURIComponent(uri.slice("aegis://audit/".length));
+    return {
+      uri,
+      mimeType: "application/json",
+      text: JSON.stringify(await deps.audit.list(20, eventPrefix), null, 2),
     };
   }
 
@@ -553,6 +606,8 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       .mini-list { display: grid; gap: 10px; }
       .mini-item { padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
       .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+      .toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+      select { appearance: none; border: 1px solid rgba(79, 90, 102, 0.16); border-radius: 999px; padding: 8px 12px; background: rgba(255, 255, 255, 0.72); color: var(--ink); font: inherit; font-size: 12px; }
       button { appearance: none; border: 0; border-radius: 999px; padding: 8px 12px; font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; background: rgba(20, 32, 45, 0.08); color: var(--ink); }
       button.primary { background: rgba(15, 118, 110, 0.12); color: var(--accent); }
       button.warn { background: rgba(180, 83, 9, 0.14); color: var(--approval); }
@@ -642,7 +697,10 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         <div class="panel rail">
           <div class="eyebrow">Telemetry compare</div>
           <h2>Recent verdict comparison</h2>
-          <div class="actions">
+          <div class="toolbar">
+            <select id="compareTarget">
+              <option value="">Use latest two</option>
+            </select>
             <button class="primary" id="compareTelemetryBtn">Compare latest two</button>
           </div>
           <div id="compare" class="mini-list"></div>
@@ -652,16 +710,31 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         <div class="panel rail">
           <div class="eyebrow">Telemetry detail</div>
           <h2>Selected telemetry drawer</h2>
+          <div class="toolbar">
+            <button class="warn" id="pinTelemetryBtn">Pin current detail</button>
+            <button id="clearTelemetryPinBtn">Clear pin</button>
+          </div>
           <div id="detail" class="mini-list"></div>
         </div>
         <div class="panel rail">
           <div class="eyebrow">Approval audit trail</div>
           <h2>Recent governance events</h2>
+          <div class="toolbar">
+            <select id="auditFilter">
+              <option value="approval">approval</option>
+              <option value="checkpoint">checkpoint</option>
+              <option value="integrity">integrity</option>
+              <option value="workspace">workspace</option>
+            </select>
+            <button class="primary" id="refreshAuditBtn">Refresh audit</button>
+          </div>
           <div id="audit" class="mini-list"></div>
         </div>
       </section>
     </main>
     <script>
+      let pinnedTelemetryId = null;
+      let selectedTelemetryId = null;
       async function resolveApproval(id, decision) {
         await fetch('/approval-queue/' + encodeURIComponent(id) + '/' + decision, {
           method: 'POST',
@@ -693,14 +766,20 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         const telemetryResponse = await fetch('/telemetry?limit=2');
         const telemetryPayload = await telemetryResponse.json();
         const rows = telemetryPayload.data || [];
-        if (rows.length < 2) {
+        const compareTarget = document.getElementById('compareTarget').value;
+        let selectedRows = rows;
+        if (compareTarget) {
+          const target = rows.find((row) => row.telemetry_id === compareTarget);
+          selectedRows = target ? [target, ...rows.filter((row) => row.telemetry_id !== compareTarget)].slice(0, 2) : rows;
+        }
+        if (selectedRows.length < 2) {
           document.getElementById('compare').innerHTML = '<div class=\"mini-item\"><strong>Not enough telemetry yet</strong><div class=\"muted tiny\">Run at least two previews to compare verdicts.</div></div>';
           return;
         }
         const compareResponse = await fetch('/telemetry/compare', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ telemetry_ids: rows.slice(0, 2).map((row) => row.telemetry_id) }),
+          body: JSON.stringify({ telemetry_ids: selectedRows.slice(0, 2).map((row) => row.telemetry_id) }),
         });
         const comparePayload = await compareResponse.json();
         const data = comparePayload.data || {};
@@ -713,6 +792,7 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           '</div></div>';
       }
       async function showTelemetryDetail(id) {
+        selectedTelemetryId = id;
         const response = await fetch('/telemetry/' + encodeURIComponent(id));
         const payload = await response.json();
         const record = payload.data || {};
@@ -723,8 +803,15 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           '<div class=\"mini-item\"><strong>Signals</strong><div class=\"tiny\">' + ((record.signals || []).length ? record.signals.join('<br />') : 'none') + '</div></div>' +
           '<div class=\"mini-item\"><strong>Divergence</strong><div class=\"tiny\">score: ' + (((evaluation.divergence || {}).score) ?? 'n/a') + '</div></div>';
       }
+      function pinCurrentTelemetry() {
+        pinnedTelemetryId = selectedTelemetryId;
+      }
+      function clearTelemetryPin() {
+        pinnedTelemetryId = null;
+      }
       async function loadAuditTrail() {
-        const response = await fetch('/audit?limit=8&event_prefix=approval');
+        const prefix = document.getElementById('auditFilter').value || 'approval';
+        const response = await fetch('/audit?limit=8&event_prefix=' + encodeURIComponent(prefix));
         const payload = await response.json();
         const rows = payload.data || [];
         document.getElementById('audit').innerHTML = rows.length
@@ -745,6 +832,9 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         const approvalsPayload = await approvalsResponse.json();
         const integrityPayload = await integrityResponse.json();
         const rows = payload.data || [];
+        document.getElementById('compareTarget').innerHTML =
+          '<option value=\"\">Use latest two</option>' +
+          rows.slice(0, 6).map((row) => '<option value=\"' + row.telemetry_id + '\">' + row.telemetry_id + ' · ' + (row.verdict || row.event_type) + '</option>').join('');
         const approvals = approvalsPayload.data || [];
         const integrity = integrityPayload.data || integrityPayload;
         const counts = rows.reduce((acc, row) => {
@@ -830,8 +920,9 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         document.querySelectorAll('[data-detail]').forEach((button) => {
           button.addEventListener('click', () => showTelemetryDetail(button.getAttribute('data-detail')));
         });
-        if (rows[0]) {
-          await showTelemetryDetail(rows[0].telemetry_id);
+        const preferredTelemetryId = pinnedTelemetryId || selectedTelemetryId || rows[0]?.telemetry_id;
+        if (preferredTelemetryId) {
+          await showTelemetryDetail(preferredTelemetryId);
         } else {
           document.getElementById('detail').innerHTML = '<div class=\"mini-item\"><strong>No telemetry selected</strong><div class=\"muted tiny\">Run a preview to populate the drawer.</div></div>';
         }
@@ -840,6 +931,9 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       document.getElementById('createBaselineBtn').addEventListener('click', createBaseline);
       document.getElementById('checkIntegrityBtn').addEventListener('click', refreshIntegrity);
       document.getElementById('compareTelemetryBtn').addEventListener('click', compareRecentTelemetry);
+      document.getElementById('pinTelemetryBtn').addEventListener('click', pinCurrentTelemetry);
+      document.getElementById('clearTelemetryPinBtn').addEventListener('click', clearTelemetryPin);
+      document.getElementById('refreshAuditBtn').addEventListener('click', loadAuditTrail);
       load().catch((error) => {
         document.getElementById('rows').innerHTML = '<tr><td colspan=\"5\">Failed to load telemetry: ' + error.message + '</td></tr>';
         document.getElementById('signals').innerHTML = '<div class=\"signal-item\">Unable to load signals.</div>';
@@ -885,6 +979,11 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         return;
       }
 
+      if (payload.method === "resources/templates/list") {
+        res.status(200).json(mcpResult(payload.id, { resourceTemplates: buildMcpResourceTemplates() }));
+        return;
+      }
+
       if (payload.method === "prompts/list") {
         res.status(200).json(mcpResult(payload.id, { prompts: buildMcpPrompts() }));
         return;
@@ -892,7 +991,10 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
 
       if (payload.method === "resources/read") {
         const resource = await readMcpResource(payload.params.uri, deps);
-        res.status(200).json(mcpResult(payload.id, { contents: [resource] }));
+        res.status(200).json(mcpResult(payload.id, mcpResourceEnvelope([resource], {
+          "aegis/resourceUri": payload.params.uri,
+          "aegis/resourceMimeType": resource.mimeType,
+        })));
         return;
       }
 
