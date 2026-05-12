@@ -57,6 +57,7 @@ export interface RouteHandlers {
   listTelemetry: (req: Request, res: Response) => Promise<void>;
   getTelemetry: (req: Request, res: Response) => Promise<void>;
   compareTelemetry: (req: Request, res: Response) => Promise<void>;
+  listAudit: (req: Request, res: Response) => Promise<void>;
   telemetryDashboard: (req: Request, res: Response) => void;
   handleMcpTransport: (req: Request, res: Response) => Promise<void>;
   interceptMcpTool: (req: Request, res: Response) => Promise<void>;
@@ -240,6 +241,12 @@ function buildMcpResources() {
       description: "Most recent baseline drift status for tracked product and policy artifacts.",
       mimeType: "application/json",
     },
+    {
+      uri: "aegis://audit/approval",
+      name: "Approval Audit Trail",
+      description: "Recent approval-related governance events recorded by the Aegis runtime.",
+      mimeType: "application/json",
+    },
   ];
 }
 
@@ -288,6 +295,14 @@ async function readMcpResource(uri: string, deps: RouteDeps) {
       uri,
       mimeType: "application/json",
       text: JSON.stringify((await deps.integrity.check()) ?? { clean: true, baseline_missing: true }, null, 2),
+    };
+  }
+
+  if (uri === "aegis://audit/approval") {
+    return {
+      uri,
+      mimeType: "application/json",
+      text: JSON.stringify(await deps.audit.list(12, "approval"), null, 2),
     };
   }
 
@@ -485,6 +500,14 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       const payload = telemetryCompareRequestSchema.parse(req.body ?? {});
       ok(res, await deps.telemetry.compare(payload.telemetry_ids));
     },
+    listAudit: async (req: Request, res: Response) => {
+      const limit = Math.max(1, Math.min(100, Number(req.query.limit ?? 20) || 20));
+      const eventPrefix =
+        typeof req.query.event_prefix === "string" && req.query.event_prefix.length > 0
+          ? req.query.event_prefix
+          : undefined;
+      ok(res, await deps.audit.list(limit, eventPrefix));
+    },
     telemetryDashboard: (_req: Request, res: Response) => {
       res
         .status(200)
@@ -521,6 +544,7 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
       .grid { display: grid; grid-template-columns: 1.1fr 0.9fr; gap: 20px; margin-top: 20px; }
       .subgrid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 20px; }
       .fullwidth { margin-top: 20px; }
+      .drawer { margin-top: 20px; }
       .summary-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
       .card { padding: 18px; border-radius: 20px; background: rgba(255, 255, 255, 0.72); border: 1px solid rgba(79, 90, 102, 0.12); }
       .value { margin-top: 8px; font-size: 30px; font-weight: 700; }
@@ -624,6 +648,18 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           <div id="compare" class="mini-list"></div>
         </div>
       </section>
+      <section class="subgrid drawer">
+        <div class="panel rail">
+          <div class="eyebrow">Telemetry detail</div>
+          <h2>Selected telemetry drawer</h2>
+          <div id="detail" class="mini-list"></div>
+        </div>
+        <div class="panel rail">
+          <div class="eyebrow">Approval audit trail</div>
+          <h2>Recent governance events</h2>
+          <div id="audit" class="mini-list"></div>
+        </div>
+      </section>
     </main>
     <script>
       async function resolveApproval(id, decision) {
@@ -675,6 +711,29 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
           '<div class=\"mini-item\"><strong>Verdicts</strong><div class=\"tiny\">' +
           (data.verdicts || []).map((item) => (item.telemetry_id + ' -> ' + (item.verdict || 'unknown'))).join('<br />') +
           '</div></div>';
+      }
+      async function showTelemetryDetail(id) {
+        const response = await fetch('/telemetry/' + encodeURIComponent(id));
+        const payload = await response.json();
+        const record = payload.data || {};
+        const evaluation = record.evaluation || {};
+        document.getElementById('detail').innerHTML =
+          '<div class=\"mini-item\"><strong>' + id + '</strong><div class=\"muted tiny\">' + (record.event_type || 'event') + ' · ' + (record.recorded_at || '') + '</div></div>' +
+          '<div class=\"mini-item\"><strong>Verdict</strong><div class=\"tiny\">' + (record.verdict || 'n/a') + '</div></div>' +
+          '<div class=\"mini-item\"><strong>Signals</strong><div class=\"tiny\">' + ((record.signals || []).length ? record.signals.join('<br />') : 'none') + '</div></div>' +
+          '<div class=\"mini-item\"><strong>Divergence</strong><div class=\"tiny\">score: ' + (((evaluation.divergence || {}).score) ?? 'n/a') + '</div></div>';
+      }
+      async function loadAuditTrail() {
+        const response = await fetch('/audit?limit=8&event_prefix=approval');
+        const payload = await response.json();
+        const rows = payload.data || [];
+        document.getElementById('audit').innerHTML = rows.length
+          ? rows.map((entry) =>
+              '<div class=\"mini-item\"><strong>' + entry.event + '</strong><div class=\"muted tiny\">' + entry.timestamp + '</div><div class=\"tiny\">' +
+              Object.entries(entry.details || {}).map(([key, value]) => key + ': ' + value).join('<br />') +
+              '</div></div>'
+            ).join('')
+          : '<div class=\"mini-item\"><strong>No approval audit yet</strong><div class=\"muted tiny\">Approval create, approve, and reject events will appear here.</div></div>';
       }
       async function load() {
         const [telemetryResponse, approvalsResponse, integrityResponse] = await Promise.all([
@@ -756,7 +815,7 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
             '<td><strong>' + row.action + '</strong><br /><span class=\"label\">' + row.requested_by + '</span></td>' +
             '<td><span class=\"pill ' + verdict + '\">' + verdict + '</span></td>' +
             '<td>' + (row.signals.length ? row.signals.join('<br />') : '<span class=\"label\">none</span>') + '</td>' +
-            '<td><code>' + row.telemetry_id + '</code><br /><span class=\"label\">sha: ' + (row.vector_sha256 || 'n/a') + '</span></td>' +
+            '<td><code>' + row.telemetry_id + '</code><br /><span class=\"label\">sha: ' + (row.vector_sha256 || 'n/a') + '</span><div class=\"actions\"><button data-detail=\"' + row.telemetry_id + '\">Open detail</button></div></td>' +
           '</tr>';
         }).join('');
         document.querySelectorAll('[data-approve]').forEach((button) => {
@@ -768,6 +827,15 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         document.querySelectorAll('[data-replay]').forEach((button) => {
           button.addEventListener('click', () => replayApproved(button.getAttribute('data-replay')));
         });
+        document.querySelectorAll('[data-detail]').forEach((button) => {
+          button.addEventListener('click', () => showTelemetryDetail(button.getAttribute('data-detail')));
+        });
+        if (rows[0]) {
+          await showTelemetryDetail(rows[0].telemetry_id);
+        } else {
+          document.getElementById('detail').innerHTML = '<div class=\"mini-item\"><strong>No telemetry selected</strong><div class=\"muted tiny\">Run a preview to populate the drawer.</div></div>';
+        }
+        await loadAuditTrail();
       }
       document.getElementById('createBaselineBtn').addEventListener('click', createBaseline);
       document.getElementById('checkIntegrityBtn').addEventListener('click', refreshIntegrity);
@@ -779,6 +847,8 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         document.getElementById('approvals').innerHTML = '<div class=\"mini-item\">Approval queue unavailable.</div>';
         document.getElementById('integrity').innerHTML = '<div class=\"mini-item\">Integrity status unavailable.</div>';
         document.getElementById('compare').innerHTML = '<div class=\"mini-item\">Telemetry compare unavailable.</div>';
+        document.getElementById('detail').innerHTML = '<div class=\"mini-item\">Telemetry detail unavailable.</div>';
+        document.getElementById('audit').innerHTML = '<div class=\"mini-item\">Audit trail unavailable.</div>';
       });
     </script>
   </body>
@@ -1062,6 +1132,8 @@ export function registerRoutes(app: Express, deps: RouteDeps): void {
   app.get("/telemetry/:telemetryId", asyncRoute(handlers.getTelemetry));
 
   app.post("/telemetry/compare", asyncRoute(handlers.compareTelemetry));
+
+  app.get("/audit", asyncRoute(handlers.listAudit));
 
   app.get("/dashboard", handlers.telemetryDashboard);
 

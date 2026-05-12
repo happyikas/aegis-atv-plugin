@@ -269,6 +269,12 @@ export interface TelemetryComparison {
   }>;
 }
 
+export interface AuditRecord {
+  event: string;
+  timestamp: string;
+  details: Record<string, unknown>;
+}
+
 export interface McpInterceptRequest {
   jsonrpc: "2.0";
   id: string | number;

@@ -1,5 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { AuditRecord } from "./types.js";
 import { nowIso } from "./utils.js";
 
 export class AuditLogger {
@@ -17,5 +18,23 @@ export class AuditLogger {
       details,
     });
     await fs.appendFile(this.filePath, `${line}\n`, "utf8");
+  }
+
+  async list(limit = 20, eventPrefix?: string): Promise<AuditRecord[]> {
+    try {
+      const raw = await fs.readFile(this.filePath, "utf8");
+      return raw
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as AuditRecord)
+        .filter((entry) => !eventPrefix || entry.event.startsWith(eventPrefix))
+        .sort((left, right) => right.timestamp.localeCompare(left.timestamp))
+        .slice(0, limit);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
   }
 }

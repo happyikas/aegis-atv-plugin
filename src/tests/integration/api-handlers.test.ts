@@ -288,6 +288,27 @@ describe("api handlers", () => {
     expect((compareRes.body as { data: { telemetry_ids: string[] } }).data.telemetry_ids).toHaveLength(2);
   });
 
+  it("lists recent approval audit events", async () => {
+    const { handlers } = await createHarness();
+
+    await handlers.createApproval(
+      mockRequest({
+        body: { action: "send_email", requested_by: "aid:executor", payload: { to: "demo@example.com" } },
+      }),
+      mockResponse(),
+    );
+
+    const res = mockResponse();
+    await handlers.listAudit(
+      mockRequest({ query: { limit: "5", event_prefix: "approval" } as never }),
+      res,
+    );
+
+    const data = (res.body as { data: Array<{ event: string }> }).data;
+    expect(data.length).toBeGreaterThan(0);
+    expect(data[0]?.event.startsWith("approval")).toBe(true);
+  });
+
   it("serves a realistic MCP initialize and tools/list flow", async () => {
     const { handlers } = await createHarness();
 
@@ -371,6 +392,23 @@ describe("api handlers", () => {
     );
     const resourceContents = (resourceReadRes.body as { result: { contents: Array<{ uri: string }> } }).result.contents;
     expect(resourceContents[0]?.uri).toBe("aegis://telemetry/recent");
+
+    const auditResourceRes = mockResponse();
+    await handlers.handleMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: 7,
+          method: "resources/read",
+          params: {
+            uri: "aegis://audit/approval",
+          },
+        },
+      }),
+      auditResourceRes,
+    );
+    const auditResource = (auditResourceRes.body as { result: { contents: Array<{ uri: string }> } }).result.contents;
+    expect(auditResource[0]?.uri).toBe("aegis://audit/approval");
 
     const promptGetRes = mockResponse();
     await handlers.handleMcpTransport(
@@ -480,6 +518,8 @@ describe("api handlers", () => {
     expect(String(res.body)).toContain("Approve");
     expect(String(res.body)).toContain("Replay approved");
     expect(String(res.body)).toContain("Compare latest two");
+    expect(String(res.body)).toContain("Selected telemetry drawer");
+    expect(String(res.body)).toContain("Recent governance events");
   });
 
   it("attests reviewer outputs and marks mismatches as untrusted", async () => {

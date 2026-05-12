@@ -280,6 +280,7 @@ The `POST /mcp` transport now also supports:
 - `resources/list` for dashboard and telemetry resources
 - `prompts/list` for reusable demo and operator triage prompts
 - `resources/read` for fetching live dashboard, telemetry, or integrity resource content
+- `resources/read` for fetching live dashboard, telemetry, integrity, or approval audit resource content
 - `prompts/get` for retrieving ready-to-use demo and operator prompt payloads
 
 The dashboard now includes live demo controls for:
@@ -289,6 +290,7 @@ The dashboard now includes live demo controls for:
 - re-running integrity drift checks without leaving the page
 - replaying approved actions
 - comparing the latest two telemetry records
+- opening a telemetry detail drawer and reading the recent approval audit trail
 
 Example realistic MCP transport flow:
 
