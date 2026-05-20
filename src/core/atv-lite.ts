@@ -1,4 +1,4 @@
-import { checksum, nowIso } from "./utils.js";
+import { canonicalize, checksum, nowIso } from "./utils.js";
 import type {
   ActionEvaluation,
   ActionRequest,
@@ -10,6 +10,8 @@ import type {
 function normalizedPayload(payload: Record<string, unknown>): Record<string, unknown> {
   return JSON.parse(JSON.stringify(payload)) as Record<string, unknown>;
 }
+
+type CommitmentExtras = Partial<AtvLiteRecord["commitment"]>;
 
 export function buildAtvLiteRecord(
   request: ActionRequest & {
@@ -28,6 +30,7 @@ export function buildAtvLiteRecord(
   },
   evaluation: ActionEvaluation,
   auditRecord?: AuditRecord,
+  commitmentExtras?: CommitmentExtras,
 ): AtvLiteRecord {
   const payload = normalizedPayload(request.payload);
   const generatedAt = nowIso();
@@ -35,13 +38,13 @@ export function buildAtvLiteRecord(
     schema_version: "ATV-Lite-v1" as const,
     tenant_id: request.tenant_id ?? "local-tenant",
     agent_id: request.agent_id ?? request.requested_by,
-    session_id: request.context?.session_id ?? "session-local",
-    trace_id: request.trace_id ?? checksum(JSON.stringify({
+    session_id: request.context?.session_id ?? request.session_id ?? "session-local",
+    trace_id: request.trace_id ?? checksum(canonicalize({
       action: request.action,
       requested_by: request.requested_by,
       generated_at: generatedAt,
     })).slice(0, 16),
-    span_id: request.span_id ?? checksum(JSON.stringify(payload)).slice(0, 16),
+    span_id: request.span_id ?? checksum(canonicalize(payload)).slice(0, 16),
     parent_span_id: request.parent_span_id,
     codex_surface: request.codex_surface ?? "codex-cli",
     workspace: request.workspace,
@@ -58,7 +61,7 @@ export function buildAtvLiteRecord(
       tool_handle: request.action === "mcp_tool"
         ? String((request.payload as { tool_name?: string }).tool_name ?? "mcp_tool")
         : request.action,
-      payload_hash: checksum(JSON.stringify(payload)),
+      payload_hash: checksum(canonicalize(payload)),
       normalized_payload: payload,
       blast_radius: evaluation.blast_radius,
     },
@@ -86,7 +89,7 @@ export function buildAtvLiteRecord(
     generated_at: generatedAt,
   };
 
-  const atvHash = checksum(JSON.stringify(atvWithoutCommitment));
+  const atvHash = checksum(canonicalize(atvWithoutCommitment));
 
   return {
     ...atvWithoutCommitment,
@@ -95,6 +98,9 @@ export function buildAtvLiteRecord(
       sequence: auditRecord?.sequence,
       audit_record_hash: auditRecord?.record_hash,
       signature: auditRecord?.signature,
+      signature_algorithm: auditRecord?.signature_algorithm,
+      signer_key_id: auditRecord?.signer_key_id,
+      ...commitmentExtras,
     },
   };
 }
@@ -102,6 +108,7 @@ export function buildAtvLiteRecord(
 export function buildAtvLiteResultRecord(
   request: ToolResultEventRequest,
   auditRecord?: AuditRecord,
+  commitmentExtras?: CommitmentExtras,
 ): AtvLiteRecord {
   const generatedAt = nowIso();
   const outputHash = request.output_hash ?? (request.output ? checksum(request.output) : undefined);
@@ -111,7 +118,7 @@ export function buildAtvLiteResultRecord(
     agent_id: request.agent_id,
     session_id: request.session_id,
     trace_id: request.trace_id,
-    span_id: request.span_id ?? checksum(JSON.stringify({
+    span_id: request.span_id ?? checksum(canonicalize({
       action: request.action,
       trace_id: request.trace_id,
     })).slice(0, 16),
@@ -119,7 +126,7 @@ export function buildAtvLiteResultRecord(
     action: {
       action_type: request.action,
       tool_handle: request.action,
-      payload_hash: checksum(JSON.stringify({ status: request.status, output_hash: outputHash })),
+      payload_hash: checksum(canonicalize({ status: request.status, output_hash: outputHash })),
       normalized_payload: {},
       blast_radius: "low" as const,
     },
@@ -148,7 +155,7 @@ export function buildAtvLiteResultRecord(
     generated_at: generatedAt,
   };
 
-  const atvHash = checksum(JSON.stringify(atvWithoutCommitment));
+  const atvHash = checksum(canonicalize(atvWithoutCommitment));
 
   return {
     ...atvWithoutCommitment,
@@ -157,6 +164,9 @@ export function buildAtvLiteResultRecord(
       sequence: auditRecord?.sequence,
       audit_record_hash: auditRecord?.record_hash,
       signature: auditRecord?.signature,
+      signature_algorithm: auditRecord?.signature_algorithm,
+      signer_key_id: auditRecord?.signer_key_id,
+      ...commitmentExtras,
     },
   };
 }

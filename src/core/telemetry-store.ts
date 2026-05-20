@@ -82,6 +82,25 @@ export class TelemetryStore {
     return record;
   }
 
+  async listEvents(limit = 100): Promise<TelemetryEventRecord[]> {
+    await this.ensureDir();
+
+    try {
+      const raw = await fs.readFile(this.logPath, "utf8");
+      return raw
+        .split("\n")
+        .filter((line) => line.trim().length > 0)
+        .map((line) => JSON.parse(line) as TelemetryEventRecord)
+        .sort((left, right) => right.recorded_at.localeCompare(left.recorded_at))
+        .slice(0, limit);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        return [];
+      }
+      throw error;
+    }
+  }
+
   async list(limit = 20): Promise<TelemetrySummary[]> {
     await this.ensureDir();
 

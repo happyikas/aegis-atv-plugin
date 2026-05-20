@@ -3,6 +3,8 @@ import type { AegisSidecarClient } from "./sidecar-client.js";
 import { HttpAegisSidecarClient } from "./sidecar-client.js";
 import { translateVerdict, type HookCommandOutcome } from "./verdict.js";
 
+type HookOutagePolicy = "fail_open" | "fail_closed" | "require_approval";
+
 async function readStdin(): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of process.stdin) {
@@ -100,13 +102,50 @@ export async function handleHookEvent(
   }
 }
 
+function resolveOutagePolicy(): HookOutagePolicy {
+  const value = process.env.AEGIS_HOOK_OUTAGE_POLICY?.trim().toLowerCase();
+  if (value === "fail_closed" || value === "require_approval" || value === "fail_open") {
+    return value;
+  }
+  return process.env.AEGIS_HOOK_FAIL_OPEN === "0" ? "fail_closed" : "fail_open";
+}
+
+function renderOutageOutcome(event: CodexHookPayload, policy: HookOutagePolicy, message: string): HookCommandOutcome {
+  if (policy === "require_approval") {
+    return {
+      continue: false,
+      event: event.event,
+      approval_required: true,
+      reason: "aegis_sidecar_unavailable",
+      detail: message,
+      suppressed_hook_error: true,
+    };
+  }
+  if (policy === "fail_closed") {
+    return {
+      continue: false,
+      event: event.event,
+      blocked: true,
+      reason: "aegis_sidecar_unavailable",
+      detail: message,
+      suppressed_hook_error: true,
+    };
+  }
+  return {
+    continue: true,
+    event: event.event,
+    detail: message,
+    suppressed_hook_error: true,
+  };
+}
+
 export async function main(): Promise<void> {
   const event = await loadHookEvent();
   if (!event) {
     return;
   }
 
-  const failOpen = process.env.AEGIS_HOOK_FAIL_OPEN !== "0";
+  const outagePolicy = resolveOutagePolicy();
   const client = new HttpAegisSidecarClient();
 
   try {
@@ -114,13 +153,7 @@ export async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(outcome)}\n`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    if (failOpen) {
-      process.stdout.write(
-        `${JSON.stringify({ continue: true, event: event.event, suppressed_hook_error: true, detail: message })}\n`,
-      );
-      return;
-    }
-    throw error;
+    process.stdout.write(`${JSON.stringify(renderOutageOutcome(event, outagePolicy, message))}\n`);
   }
 }
 

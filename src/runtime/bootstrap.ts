@@ -6,9 +6,14 @@ import { createConfiguredOpenClawBridge, executeViaOpenClawBridge } from "../ada
 import { OpenClawWorkspaceAdapter } from "../adapters/openclaw-workspace.js";
 import { ApprovalQueue } from "../core/approval-queue.js";
 import { ActionFirewall } from "../core/action-firewall.js";
+import { AtmuLedger } from "../core/atmu-ledger.js";
+import { BurnInProfiler } from "../core/burnin.js";
+import { ContextMemoryStore } from "../core/context-memory.js";
 import { AegisControlPlane } from "../core/control-plane.js";
+import { createConfiguredDualCheckProvider, DualCheckStore } from "../core/dual-check.js";
 import { EventCollector } from "../core/event-collector.js";
 import { IntegrityBaselineStore } from "../core/integrity.js";
+import { createConfiguredJudgeProvider } from "../core/judge-provider.js";
 import { TelemetryStore } from "../core/telemetry-store.js";
 import { AuditLogger } from "../daemon/audit.js";
 import { CheckpointManager } from "../daemon/checkpoint.js";
@@ -22,6 +27,10 @@ export interface AegisRuntime {
   telemetry: TelemetryStore;
   collector: EventCollector;
   actions: OpenClawActionHarness;
+  atmu: AtmuLedger;
+  dualCheck: DualCheckStore;
+  burnin: BurnInProfiler;
+  contextMemory: ContextMemoryStore;
   controlPlane: AegisControlPlane;
   mcpProxy: AegisMcpProxy;
   dataRoot: string;
@@ -45,7 +54,11 @@ export function buildAegisRuntime(
   const integrity = new IntegrityBaselineStore(dataRoot, process.cwd());
   const telemetry = new TelemetryStore(dataRoot);
   const collector = new EventCollector(dataRoot, audit);
-  const firewall = new ActionFirewall(integrity);
+  const atmu = new AtmuLedger(dataRoot);
+  const dualCheck = new DualCheckStore(dataRoot, createConfiguredDualCheckProvider(env));
+  const burnin = new BurnInProfiler(dataRoot);
+  const contextMemory = new ContextMemoryStore(dataRoot);
+  const firewall = new ActionFirewall(integrity, createConfiguredJudgeProvider(env));
   const actions = new Harness(approvals, audit, executor, firewall, telemetry);
   const controlPlane = new AegisControlPlane({
     approvals,
@@ -53,6 +66,9 @@ export function buildAegisRuntime(
     actions,
     integrity,
     collector,
+    atmu,
+    dualCheck,
+    contextMemory,
   });
   const mcpProxy = new AegisMcpProxy(controlPlane, createConfiguredMcpTransport(env), dataRoot);
 
@@ -65,6 +81,10 @@ export function buildAegisRuntime(
     telemetry,
     collector,
     actions,
+    atmu,
+    dualCheck,
+    burnin,
+    contextMemory,
     controlPlane,
     mcpProxy,
     dataRoot,

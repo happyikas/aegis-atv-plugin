@@ -193,6 +193,29 @@ export const stopEventRequestSchema = z.object({
   token_count: z.number().int().nonnegative().optional(),
   status: z.enum(["completed", "cancelled", "error"]).optional(),
 });
+export const evidenceVerifyRequestSchema = z.object({
+  session_id: z.string().optional(),
+  trace_id: z.string().optional(),
+}).refine((value) => Boolean(value.session_id || value.trace_id), {
+  message: "session_id or trace_id is required",
+});
+
+export const burnInCalibrateRequestSchema = z.object({
+  limit: z.number().int().positive().max(500).optional(),
+});
+
+export const dualCheckVerifyRequestSchema = z.object({
+  receipt_id: z.string().min(1),
+});
+
+export const contextMemoryQuerySchema = z.object({
+  session_id: z.string().optional(),
+  trace_id: z.string().optional(),
+  kind: z.enum(["session", "prompt", "decision", "result", "approval", "stop", "analysis"]).optional(),
+  text: z.string().optional(),
+  limit: z.number().int().positive().max(200).optional(),
+});
+
 
 export const sendEmailPayloadSchema = z.object({
   to: z.string().min(1),

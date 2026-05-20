@@ -2,6 +2,9 @@ import type { Express, NextFunction, Request, Response } from "express";
 import {
   actionInterceptRequestSchema,
   approvalRequestSchema,
+  burnInCalibrateRequestSchema,
+  contextMemoryQuerySchema,
+  dualCheckVerifyRequestSchema,
   integrityArtifactRequestSchema,
   mcpInterceptRequestSchema,
   mcpTransportRequestSchema,
@@ -10,6 +13,7 @@ import {
   restoreByParamRequestSchema,
   restoreRequestSchema,
   stopEventRequestSchema,
+  evidenceVerifyRequestSchema,
   sessionStartRequestSchema,
   telemetryCompareRequestSchema,
   toolDecisionRequestSchema,
@@ -18,11 +22,16 @@ import {
   permissionRequestEventRequestSchema,
 } from "../core/schema.js";
 import type { OpenClawActionHarness } from "../adapters/mcporter-hook.js";
+import { verifyEvidenceChain } from "../core/evidence.js";
 import type { AegisMcpProxy } from "../adapters/mcp-proxy.js";
 import { recall } from "../core/recall.js";
 import { isHighRiskAction } from "../core/policy.js";
 import type { ApprovalQueue } from "../core/approval-queue.js";
+import type { AtmuLedger } from "../core/atmu-ledger.js";
 import type { AuditLogger } from "../core/audit.js";
+import type { BurnInProfiler } from "../core/burnin.js";
+import type { ContextMemoryStore } from "../core/context-memory.js";
+import type { DualCheckStore } from "../core/dual-check.js";
 import type { CheckpointManager } from "../daemon/checkpoint.js";
 import type { OpenClawWorkspaceAdapter } from "../adapters/openclaw-workspace.js";
 import type { MemoryRecord } from "../core/types.js";
@@ -41,6 +50,10 @@ interface RouteDeps {
   integrity: IntegrityBaselineStore;
   telemetry: TelemetryStore;
   collector: EventCollector;
+  atmu: AtmuLedger;
+  dualCheck: DualCheckStore;
+  burnin: BurnInProfiler;
+  contextMemory: ContextMemoryStore;
   controlPlane: AegisControlPlane;
   mcpProxy: AegisMcpProxy;
 }
@@ -53,6 +66,15 @@ export interface RouteHandlers {
   collectToolResult: (req: Request, res: Response) => Promise<void>;
   collectPermissionRequest: (req: Request, res: Response) => Promise<void>;
   stopSession: (req: Request, res: Response) => Promise<void>;
+  verifyEvidence: (req: Request, res: Response) => Promise<void>;
+  listIntents: (req: Request, res: Response) => Promise<void>;
+  listDualCheckReceipts: (req: Request, res: Response) => Promise<void>;
+  getDualCheckReceipt: (req: Request, res: Response) => Promise<void>;
+  verifyDualCheckReceipt: (req: Request, res: Response) => Promise<void>;
+  calibrateBurnIn: (req: Request, res: Response) => Promise<void>;
+  getBurnInProfile: (req: Request, res: Response) => Promise<void>;
+  queryContextMemory: (req: Request, res: Response) => Promise<void>;
+  profileContextMemory: (req: Request, res: Response) => Promise<void>;
   scanWorkspace: (req: Request, res: Response) => Promise<void>;
   listMemories: (req: Request, res: Response) => Promise<void>;
   getMemory: (req: Request, res: Response) => Promise<void>;
@@ -448,6 +470,60 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
     stopSession: async (req: Request, res: Response) => {
       const payload = stopEventRequestSchema.parse(req.body ?? {});
       ok(res, await deps.controlPlane.stopSession(payload), 201);
+    },
+    verifyEvidence: async (req: Request, res: Response) => {
+      const payload = evidenceVerifyRequestSchema.parse(req.body ?? req.query ?? {});
+      const records = await deps.collector.listAll();
+      const auditRecords = await deps.audit.listAll();
+      ok(res, verifyEvidenceChain(records, auditRecords, payload));
+    },
+    listIntents: async (req: Request, res: Response) => {
+      const limit = Math.max(1, Math.min(200, Number(req.query.limit ?? 50) || 50));
+      ok(res, await deps.atmu.list(limit));
+    },
+    listDualCheckReceipts: async (req: Request, res: Response) => {
+      const limit = Math.max(1, Math.min(200, Number(req.query.limit ?? 20) || 20));
+      ok(res, await deps.dualCheck.list(limit));
+    },
+    getDualCheckReceipt: async (req: Request, res: Response) => {
+      const receipt = await deps.dualCheck.get(routeParam(req.params.receiptId));
+      if (!receipt) {
+        throw new Error(`Dual-check receipt not found: ${routeParam(req.params.receiptId)}`);
+      }
+      ok(res, receipt);
+    },
+    verifyDualCheckReceipt: async (req: Request, res: Response) => {
+      const payload = dualCheckVerifyRequestSchema.parse(req.body ?? {});
+      const receipt = await deps.dualCheck.get(payload.receipt_id);
+      if (!receipt) {
+        throw new Error(`Dual-check receipt not found: ${payload.receipt_id}`);
+      }
+      ok(res, {
+        receipt_id: receipt.receipt_id,
+        valid: deps.dualCheck.verifyReceipt(receipt),
+      });
+    },
+    calibrateBurnIn: async (req: Request, res: Response) => {
+      const payload = burnInCalibrateRequestSchema.parse(req.body ?? {});
+      ok(res, await deps.burnin.calibrate(await deps.telemetry.listEvents(payload.limit ?? 100)), 201);
+    },
+    getBurnInProfile: async (_req: Request, res: Response) => {
+      ok(res, await deps.burnin.latest() ?? { missing: true });
+    },
+    queryContextMemory: async (req: Request, res: Response) => {
+      const raw = req.method === "GET" ? req.query : req.body ?? {};
+      const payload = contextMemoryQuerySchema.parse({
+        session_id: typeof raw.session_id === "string" ? raw.session_id : undefined,
+        trace_id: typeof raw.trace_id === "string" ? raw.trace_id : undefined,
+        kind: typeof raw.kind === "string" ? raw.kind : undefined,
+        text: typeof raw.text === "string" ? raw.text : undefined,
+        limit: raw.limit !== undefined ? Number(raw.limit) : undefined,
+      });
+      ok(res, await deps.contextMemory.query(payload));
+    },
+    profileContextMemory: async (req: Request, res: Response) => {
+      const sessionId = typeof req.query.session_id === "string" ? req.query.session_id : undefined;
+      ok(res, await deps.contextMemory.profile(sessionId));
     },
     scanWorkspace: async (_req: Request, res: Response) => {
       const records = await deps.workspace.scan();
@@ -1257,6 +1333,16 @@ export function registerRoutes(app: Express, deps: RouteDeps): void {
   app.post("/v1/events/permission-request", asyncRoute(handlers.collectPermissionRequest));
 
   app.post("/v1/events/stop", asyncRoute(handlers.stopSession));
+
+  app.post("/v1/evidence/verify", asyncRoute(handlers.verifyEvidence));
+  app.get("/v1/atmu/intents", asyncRoute(handlers.listIntents));
+  app.get("/v1/dual-check/receipts", asyncRoute(handlers.listDualCheckReceipts));
+  app.get("/v1/dual-check/receipts/:receiptId", asyncRoute(handlers.getDualCheckReceipt));
+  app.post("/v1/dual-check/verify", asyncRoute(handlers.verifyDualCheckReceipt));
+  app.post("/v1/burnin/calibrate", asyncRoute(handlers.calibrateBurnIn));
+  app.get("/v1/burnin/profile", asyncRoute(handlers.getBurnInProfile));
+  app.post("/v1/context-memory/query", asyncRoute(handlers.queryContextMemory));
+  app.get("/v1/context-memory/profile", asyncRoute(handlers.profileContextMemory));
 
   app.post("/workspace/scan", asyncRoute(handlers.scanWorkspace));
 

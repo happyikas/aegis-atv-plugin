@@ -20,6 +20,9 @@ A Codex hook adapter that forwards `SessionStart`, `UserPromptSubmit`, `PreToolU
   - Default: `codex-desktop`
 - `AEGIS_HOOK_FAIL_OPEN`
   - Default: `1`
+- `AEGIS_HOOK_OUTAGE_POLICY`
+  - Values: `fail_open`, `require_approval`, `fail_closed`
+  - Default: `fail_open`
 
 ## Usage
 
@@ -37,3 +40,11 @@ The hook writes a JSON result to stdout and exits with code `0` even when fail-o
 - `examples/user-prompt-submit.json`
 - `examples/pre-tool-use.json`
 - `examples/post-tool-use.json`
+
+## Golden path
+
+```bash
+bash /Users/chanikpark/Documents/aegis_atv_codex_mvp/scripts/codex-golden-path.sh
+```
+
+This runs the packaged hook examples and then asks the sidecar to verify evidence completeness for the demo session.

@@ -50,3 +50,13 @@ Use this checklist to apply the `deployment/codex` templates to the current loca
 cat /Users/chanikpark/Documents/aegis_atv_codex_mvp/pkg/codex-plugin-aegis/examples/session-start.json | npm run hook:codex
 cat /Users/chanikpark/Documents/aegis_atv_codex_mvp/pkg/codex-plugin-aegis/examples/pre-tool-use.json | npm run hook:codex
 ```
+
+## Hook outage policy
+
+Configure one of:
+
+- `AEGIS_HOOK_OUTAGE_POLICY=fail_open`
+- `AEGIS_HOOK_OUTAGE_POLICY=require_approval`
+- `AEGIS_HOOK_OUTAGE_POLICY=fail_closed`
+
+Recommended pilot default: `fail_open` for developer velocity, with `MCP proxy primary` enforcement still enabled.

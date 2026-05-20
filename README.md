@@ -171,6 +171,7 @@ This MVP does not replace OpenClaw. It wraps the same local workspace and treats
 - `POST /v1/events/stop`
 - `POST /v1/tool/decision`
 - `POST /v1/tool/result`
+- `POST /v1/evidence/verify`
 - `GET /approval-queue`
 - `POST /approval-queue/:id/approve`
 - `POST /approval-queue/:id/reject`
@@ -512,3 +513,10 @@ tail -f data/launchd.stderr.log
 ```
 
 The generated bridge shell script is a template only. Replace its command body with the real OpenClaw invocation path used on your Mac mini.
+
+
+## Codex MVP operations
+
+- Hook payload contract: [docs/CODEX_HOOK_COMPATIBILITY_MATRIX.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/CODEX_HOOK_COMPATIBILITY_MATRIX.md)
+- Golden path script: [scripts/codex-golden-path.sh](/Users/chanikpark/Documents/aegis_atv_codex_mvp/scripts/codex-golden-path.sh)
+- Evidence verification endpoint: `POST /v1/evidence/verify`

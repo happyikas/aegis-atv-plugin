@@ -3,7 +3,11 @@ import { ZodError } from "zod";
 import { registerRoutes } from "./routes.js";
 import type { OpenClawActionHarness } from "../adapters/mcporter-hook.js";
 import type { ApprovalQueue } from "../core/approval-queue.js";
+import type { AtmuLedger } from "../core/atmu-ledger.js";
+import type { BurnInProfiler } from "../core/burnin.js";
+import type { ContextMemoryStore } from "../core/context-memory.js";
 import type { AuditLogger } from "../core/audit.js";
+import type { DualCheckStore } from "../core/dual-check.js";
 import type { CheckpointManager } from "../daemon/checkpoint.js";
 import type { OpenClawWorkspaceAdapter } from "../adapters/openclaw-workspace.js";
 import type { IntegrityBaselineStore } from "../core/integrity.js";
@@ -21,6 +25,10 @@ interface ServerDeps {
   integrity: IntegrityBaselineStore;
   telemetry: TelemetryStore;
   collector: EventCollector;
+  atmu: AtmuLedger;
+  dualCheck: DualCheckStore;
+  burnin: BurnInProfiler;
+  contextMemory: ContextMemoryStore;
   controlPlane: AegisControlPlane;
   mcpProxy: AegisMcpProxy;
 }

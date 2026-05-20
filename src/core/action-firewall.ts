@@ -1,6 +1,7 @@
 import { isHighRiskAction } from "./policy.js";
 import { summarizeProvenance } from "./provenance.js";
 import { buildTelemetryVector } from "./telemetry.js";
+import { HeuristicJudgeProvider, type JudgeProvider } from "./judge-provider.js";
 import type { IntegrityBaselineStore } from "./integrity.js";
 import type {
   ActionEvaluation,
@@ -47,6 +48,15 @@ function classifyBlastRadius(request: ActionRequest): BlastRadius {
 
 function keywordHit(text: string, patterns: string[]): boolean {
   return patterns.some((pattern) => text.includes(pattern));
+}
+
+function stricterVerdict(left: FirewallVerdict, right: FirewallVerdict): FirewallVerdict {
+  const order: Record<FirewallVerdict, number> = {
+    allow: 0,
+    require_approval: 1,
+    block: 2,
+  };
+  return order[right] > order[left] ? right : left;
 }
 
 export function detectIntentDivergence(request: ActionRequest, blastRadius: BlastRadius): IntentDivergence {
@@ -112,7 +122,10 @@ export function detectIntentDivergence(request: ActionRequest, blastRadius: Blas
 }
 
 export class ActionFirewall {
-  constructor(private readonly integrity?: IntegrityBaselineStore) {}
+  constructor(
+    private readonly integrity?: IntegrityBaselineStore,
+    private readonly judgeProvider: JudgeProvider = new HeuristicJudgeProvider(),
+  ) {}
 
   async evaluate(request: ActionRequest): Promise<ActionEvaluation> {
     const blastRadius = classifyBlastRadius(request);
@@ -122,7 +135,7 @@ export class ActionFirewall {
       ? await this.integrity.check(request.context?.artifact_paths)
       : undefined;
 
-  const signals = [
+    const signals = [
       ...provenance.risk_flags,
       ...divergence.reasons,
       ...(integrity?.mutations.map((mutation) => `artifact_${mutation.status}:${mutation.path}`) ?? []),
@@ -155,6 +168,18 @@ export class ActionFirewall {
       verdict = "require_approval";
     }
 
+    const judge = await this.judgeProvider.assess({
+      request,
+      blastRadius,
+      provenance,
+      divergence,
+      integrity,
+    });
+    verdict = stricterVerdict(verdict, judge.recommendation);
+    if (judge.reasons.length > 0) {
+      signals.push(...judge.reasons.map((reason) => `judge:${reason}`));
+    }
+
     const evaluationWithoutTelemetry = {
       verdict,
       blast_radius: blastRadius,
@@ -162,6 +187,7 @@ export class ActionFirewall {
       provenance,
       integrity,
       divergence,
+      judge,
     };
 
     return {

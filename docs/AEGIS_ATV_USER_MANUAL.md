@@ -369,3 +369,16 @@ This MVP is still a product prototype. It does not yet include:
 - formal compliance packaging
 
 For enterprise-gap analysis, use the product readiness notes separately.
+
+
+## Evidence verification
+
+Verify that a session has the expected session, prompt, decision, result, and stop chain:
+
+```bash
+curl -X POST http://localhost:4187/v1/evidence/verify \
+  -H 'content-type: application/json' \
+  -d '{"session_id":"sess-demo-1"}'
+```
+
+Hook-side outage behavior can be configured with `AEGIS_HOOK_OUTAGE_POLICY` using `fail_open`, `require_approval`, or `fail_closed`.

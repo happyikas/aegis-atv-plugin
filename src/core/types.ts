@@ -210,6 +210,16 @@ export interface IntentDivergence {
   reasons: string[];
 }
 
+export interface JudgeAssessment {
+  provider: "heuristic-judge-v1";
+  score: number;
+  confidence: number;
+  recommendation: FirewallVerdict;
+  ambiguous: boolean;
+  reasons: string[];
+  advice: string[];
+}
+
 export interface TelemetryVectorRecord {
   telemetry_id: string;
   schema_version: "ATV-2080-v1-demo";
@@ -230,6 +240,7 @@ export interface ActionEvaluation {
   provenance: ProvenanceSummary;
   integrity?: IntegrityCheckReport;
   divergence: IntentDivergence;
+  judge?: JudgeAssessment;
   telemetry: TelemetryVectorRecord;
 }
 
@@ -293,6 +304,9 @@ export interface AuditRecord {
   prev_record_hash?: string;
   record_hash: string;
   signature: string;
+  signature_algorithm?: "ed25519";
+  signer_key_id?: string;
+  public_key?: string;
   details: Record<string, unknown>;
 }
 
@@ -351,6 +365,11 @@ export interface AtvLiteRecord {
     sequence?: number;
     audit_record_hash?: string;
     signature?: string;
+    signature_algorithm?: "ed25519";
+    signer_key_id?: string;
+    intent_id?: string;
+    dual_check_receipt_id?: string;
+    dual_check_consistent?: boolean;
   };
   generated_at: string;
 }

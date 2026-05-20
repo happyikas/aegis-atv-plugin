@@ -36,3 +36,13 @@ sudo /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/install-re
 - `run-hook.sh` now executes [`pkg/codex-plugin-aegis/src/hook.ts`](/Users/chanikpark/Documents/aegis_atv_codex_mvp/pkg/codex-plugin-aegis/src/hook.ts) as the canonical Codex hook adapter.
 - It exports stable defaults for `AEGIS_SIDECAR_URL`, `AEGIS_AGENT_ID`, `AEGIS_TENANT_ID`, and `AEGIS_CODEX_SURFACE`.
 - It uses an absolute Node path (`/opt/homebrew/bin/node` by default) so Codex hook environments with minimal `PATH` do not fail.
+
+## Outage policy
+
+The packaged Codex hook adapter supports three outage modes when the sidecar is unavailable:
+
+- `fail_open`
+- `require_approval`
+- `fail_closed`
+
+Set `AEGIS_HOOK_OUTAGE_POLICY` in the hook launcher environment to choose the desired posture.

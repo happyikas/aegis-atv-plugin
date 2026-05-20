@@ -59,7 +59,7 @@ export class EventCollector {
     return record;
   }
 
-  async list(limit = 20): Promise<CollectedEventRecord[]> {
+  async listAll(): Promise<CollectedEventRecord[]> {
     await this.ensureDir();
 
     try {
@@ -68,13 +68,17 @@ export class EventCollector {
         .split("\n")
         .filter((line) => line.trim().length > 0)
         .map((line) => JSON.parse(line) as CollectedEventRecord)
-        .sort((left, right) => right.recorded_at.localeCompare(left.recorded_at))
-        .slice(0, limit);
+        .sort((left, right) => right.recorded_at.localeCompare(left.recorded_at));
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") {
         return [];
       }
       throw error;
     }
+  }
+
+  async list(limit = 20): Promise<CollectedEventRecord[]> {
+    const records = await this.listAll();
+    return records.slice(0, limit);
   }
 }

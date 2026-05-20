@@ -15,6 +15,9 @@ import { AegisControlPlane } from "../../core/control-plane.js";
 import { IntegrityBaselineStore } from "../../core/integrity.js";
 import { TelemetryStore } from "../../core/telemetry-store.js";
 import { AuditLogger } from "../../daemon/audit.js";
+import { AtmuLedger } from "../../core/atmu-ledger.js";
+import { BurnInProfiler } from "../../core/burnin.js";
+import { DualCheckStore } from "../../core/dual-check.js";
 import { CheckpointManager } from "../../daemon/checkpoint.js";
 
 const tempDirs: string[] = [];
@@ -73,6 +76,10 @@ async function createHarness() {
   const integrity = new IntegrityBaselineStore(dataRoot, process.cwd());
   const telemetry = new TelemetryStore(dataRoot);
   const collector = new EventCollector(dataRoot, audit);
+  const atmu = new AtmuLedger(dataRoot);
+  const dualCheck = new DualCheckStore(dataRoot);
+  const burnin = new BurnInProfiler(dataRoot);
+  const contextMemory = new (await import("../../core/context-memory.js")).ContextMemoryStore(dataRoot);
   const firewall = new ActionFirewall(integrity);
   const actions = new OpenClawActionHarness(approvals, audit, async (request) => ({
     action: request.action,
@@ -85,6 +92,9 @@ async function createHarness() {
     actions,
     integrity,
     collector,
+    atmu,
+    dualCheck,
+    contextMemory,
   });
 
   const handlers = createRouteHandlers({
@@ -96,6 +106,10 @@ async function createHarness() {
     integrity,
     telemetry,
     collector,
+    atmu,
+    dualCheck,
+    burnin,
+    contextMemory,
     controlPlane,
     mcpProxy: new AegisMcpProxy(controlPlane, new InMemoryMcpTransport(), dataRoot),
   });
@@ -239,13 +253,16 @@ describe("api handlers", () => {
     expect(decisionRes.statusCode).toBe(201);
     expect((decisionRes.body as { data: { verdict: string; atv_lite: { schema_version: string } } }).data.verdict).toBe("allow");
     expect((decisionRes.body as { data: { atv_lite: { schema_version: string } } }).data.atv_lite.schema_version).toBe("ATV-Lite-v1");
+    const decisionData = (decisionRes.body as { data: { atv_lite: { trace_id: string; commitment: { intent_id?: string; dual_check_receipt_id?: string } } } }).data;
+    expect(decisionData.atv_lite.commitment.intent_id).toBeTruthy();
+    expect(decisionData.atv_lite.commitment.dual_check_receipt_id).toBeTruthy();
 
     const resultRes = mockResponse();
     await handlers.collectToolResult(
       mockRequest({
         body: {
           session_id: sessionId,
-          trace_id: "trace-1",
+          trace_id: decisionData.atv_lite.trace_id,
           agent_id: "aid:executor",
           action: "read_file",
           status: "success",
@@ -409,6 +426,96 @@ describe("api handlers", () => {
       compareRes,
     );
     expect((compareRes.body as { data: { telemetry_ids: string[] } }).data.telemetry_ids).toHaveLength(2);
+  });
+
+  it("exposes ATMU intents, dual-check receipts, and burn-in calibration endpoints", async () => {
+    const { handlers } = await createHarness();
+    await handlers.createIntegrityBaseline(mockRequest({ body: {} }), mockResponse());
+
+    const decisionRes = mockResponse();
+    await handlers.decideTool(
+      mockRequest({
+        body: {
+          session_id: "sess-atmu",
+          agent_id: "aid:executor",
+          action: "read_file",
+          payload: { path: "MEMORY.md" },
+          context: {
+            declared_intent: "inspect canonical memory only",
+            sources: [{ kind: "user_prompt", label: "user", content: "inspect memory", stance: "supporting" }],
+          },
+        },
+      }),
+      decisionRes,
+    );
+    const decisionData = (decisionRes.body as { data: { atv_lite: { trace_id: string; commitment: { dual_check_receipt_id?: string } } } }).data;
+
+    const intentRes = mockResponse();
+    await handlers.listIntents(mockRequest({ query: { limit: "10" } as never }), intentRes);
+    expect((intentRes.body as { data: Array<{ trace_id: string }> }).data.some((item) => item.trace_id === decisionData.atv_lite.trace_id)).toBe(true);
+
+    const receiptsRes = mockResponse();
+    await handlers.listDualCheckReceipts(mockRequest({ query: { limit: "10" } as never }), receiptsRes);
+    const receipts = (receiptsRes.body as { data: Array<{ receipt_id: string }> }).data;
+    expect(receipts.length).toBeGreaterThan(0);
+
+    const verifyRes = mockResponse();
+    await handlers.verifyDualCheckReceipt(
+      mockRequest({ body: { receipt_id: decisionData.atv_lite.commitment.dual_check_receipt_id } }),
+      verifyRes,
+    );
+    expect((verifyRes.body as { data: { valid: boolean } }).data.valid).toBe(true);
+
+    await handlers.previewAction(
+      mockRequest({
+        body: {
+          action: "external_share",
+          requested_by: "aid:executor",
+          payload: { target: "https://example.com", resource: "memory/task.md" },
+          context: {
+            declared_intent: "share the approved summary",
+            sources: [{ kind: "user_prompt", label: "user", content: "share summary", stance: "supporting" }],
+          },
+        },
+      }),
+      mockResponse(),
+    );
+
+    const calibrateRes = mockResponse();
+    await handlers.calibrateBurnIn(mockRequest({ body: { limit: 20 } }), calibrateRes);
+    expect(calibrateRes.statusCode).toBe(201);
+    expect((calibrateRes.body as { data: { sample_size: number } }).data.sample_size).toBeGreaterThan(0);
+
+    const profileRes = mockResponse();
+    await handlers.getBurnInProfile(mockRequest(), profileRes);
+    expect((profileRes.body as { data: { profile_id: string } }).data.profile_id).toBeTruthy();
+  });
+
+  it("records and queries context memory for operator diagnosis", async () => {
+    const { handlers } = await createHarness();
+
+    await handlers.startSession(
+      mockRequest({ body: { agent_id: "aid:executor", workspace: "/repo", session_id: "sess-memory" } }),
+      mockResponse(),
+    );
+    await handlers.collectUserPrompt(
+      mockRequest({ body: { session_id: "sess-memory", agent_id: "aid:executor", prompt: "Inspect MEMORY.md" } }),
+      mockResponse(),
+    );
+
+    const queryRes = mockResponse();
+    await handlers.queryContextMemory(
+      mockRequest({ body: { session_id: "sess-memory", text: "Inspect", limit: 10 } }),
+      queryRes,
+    );
+    expect((queryRes.body as { data: Array<{ kind: string }> }).data.length).toBeGreaterThan(0);
+
+    const profileRes = mockResponse();
+    await handlers.profileContextMemory(
+      mockRequest({ query: { session_id: "sess-memory" } as never }),
+      profileRes,
+    );
+    expect((profileRes.body as { data: { total_entries: number } }).data.total_entries).toBeGreaterThan(0);
   });
 
   it("lists recent approval audit events", async () => {

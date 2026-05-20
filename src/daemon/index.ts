@@ -9,7 +9,7 @@ async function ensureDir(target: string): Promise<void> {
 
 async function main(): Promise<void> {
   const runtime = buildAegisRuntime();
-  const { workspace, workspaceRoot, dataRoot, approvals, audit, checkpoints, actions, integrity, telemetry, collector, controlPlane, mcpProxy } = runtime;
+  const { workspace, workspaceRoot, dataRoot, approvals, audit, checkpoints, actions, integrity, telemetry, collector, atmu, dualCheck, burnin, contextMemory, controlPlane, mcpProxy } = runtime;
   const port = Number(process.env.PORT ?? 4187);
 
   await ensureDir(workspaceRoot);
@@ -33,6 +33,10 @@ async function main(): Promise<void> {
     integrity,
     telemetry,
     collector,
+    atmu,
+    dualCheck,
+    burnin,
+    contextMemory,
     controlPlane,
     mcpProxy,
   });
