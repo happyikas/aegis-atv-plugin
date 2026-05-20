@@ -1,0 +1,57 @@
+# Admin-enforced Codex requirements for Aegis ATV.
+# This is the correct enterprise surface for managed hooks.
+
+allowed_approval_policies = ["on-request"]
+allowed_sandbox_modes = ["read-only", "workspace-write"]
+
+[features]
+codex_hooks = true
+
+[hooks]
+managed_dir = "/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex"
+
+[[hooks.SessionStart]]
+matcher = "startup|resume|clear"
+[[hooks.SessionStart.hooks]]
+type = "command"
+command = "/bin/zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh"
+timeout = 30
+statusMessage = "Aegis ATV session check"
+
+[[hooks.UserPromptSubmit]]
+[[hooks.UserPromptSubmit.hooks]]
+type = "command"
+command = "/bin/zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh"
+timeout = 30
+statusMessage = "Aegis ATV prompt check"
+
+[[hooks.PreToolUse]]
+matcher = "^Bash$"
+[[hooks.PreToolUse.hooks]]
+type = "command"
+command = "/bin/zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh"
+timeout = 30
+statusMessage = "Aegis ATV tool precheck"
+
+[[hooks.PermissionRequest]]
+matcher = "^Bash$"
+[[hooks.PermissionRequest.hooks]]
+type = "command"
+command = "/bin/zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh"
+timeout = 30
+statusMessage = "Aegis ATV approval check"
+
+[[hooks.PostToolUse]]
+matcher = "^Bash$"
+[[hooks.PostToolUse.hooks]]
+type = "command"
+command = "/bin/zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh"
+timeout = 30
+statusMessage = "Aegis ATV post-tool review"
+
+[[hooks.Stop]]
+[[hooks.Stop.hooks]]
+type = "command"
+command = "/bin/zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh"
+timeout = 30
+statusMessage = "Aegis ATV stop check"

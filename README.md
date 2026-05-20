@@ -1,0 +1,522 @@
+# AegIsDATA-lite for macOS + OpenClaw MVP
+
+Aegis ATV is a software-first trust layer for autonomous agents. This repo turns the attached patent concepts into a working demo that can decide, before an agent action runs, whether to `allow`, `require_approval`, or `block`, while emitting explainable telemetry and integrity evidence.
+
+## Why this matters
+
+- For customers: it adds pre-commit control, audit evidence, and action gating without replacing the existing agent runtime.
+- For investors: it shows a near-term software wedge that can expand into hardware attestation, MCP enforcement, and privacy-preserving telemetry products.
+- For engineering teams: it provides a runnable MVP for action firewalling, provenance-aware policy, and ATV-style telemetry.
+
+## What this demo includes
+
+Local file-backed harness that wraps an existing OpenClaw workspace with:
+
+- memory metadata sidecars
+- ATMU-lite memory state transitions
+- recall filtering
+- risky action approvals
+- Aegis ATV action preview firewall
+- instruction-source provenance checks
+- local artifact integrity baseline + mutation detection
+- demo Agent Telemetry Vector generation
+- audit logging
+- checkpoint and restore
+- file watching
+- local REST API
+
+## Demo outcomes
+
+Within one short demo, you can show:
+
+- a normal agent action being allowed
+- a risky action being sent to approval
+- a misleading action being blocked before execution
+- telemetry ids and vector hashes being generated per action review
+- instruction-source provenance influencing policy decisions
+- build-to-runtime artifact drift causing policy escalation
+
+## Audience-specific message
+
+### Customer message
+
+- Keep your existing agent stack.
+- Add a policy and evidence layer in front of risky actions.
+- Reduce trust in opaque agent behavior by making decisions inspectable.
+
+### Investor message
+
+- The product can start as software and land quickly.
+- The architecture naturally expands into hardware-rooted telemetry and attestation.
+- The IP is visible as product behavior, not just as a filing narrative.
+
+## Quick start
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Seed a local demo workspace in the default OpenClaw location:
+
+```bash
+npm run demo:seed
+```
+
+3. By default, the daemon watches `~/.openclaw/workspace`. You can override it:
+
+```bash
+export OPENCLAW_WORKSPACE=/path/to/openclaw/workspace
+export AEGIS_DATA_DIR=/path/to/aegis-openclaw-lite/data
+export PORT=4187
+```
+
+4. Run the daemon:
+
+```bash
+npm run dev
+```
+
+Optional Phase 2 runtime entrypoints:
+
+```bash
+npm run hook:codex
+npm run mcp:stdio
+```
+
+5. In another terminal, scan the workspace:
+
+```bash
+curl -X POST http://localhost:4187/workspace/scan
+```
+
+6. Inspect generated sidecar metadata:
+
+```bash
+ls ~/.openclaw/workspace/.meta
+cat ~/.openclaw/workspace/.meta/MEMORY.md.json
+```
+
+Starting the daemon or calling the scan endpoint creates sidecar JSON files in `~/.openclaw/workspace/.meta/`.
+
+The daemon also watches tracked files and appends newline-delimited JSON audit entries to `data/audit/audit.log`.
+
+Checkpoints are stored under `data/snapshots/` and can restore metadata alone or restore markdown files when an explicit force flag is provided.
+
+Recall defaults to `verified` and `committed` memories, excludes `quarantined`, allows `draft` only in planner or retriever mode, and redacts high-sensitivity content unless explicitly requested.
+
+High-risk actions (`send_email`, `modify_calendar`, `delete_file`, `external_share`) are stored in `data/approvals.json` as local pending approvals until they are explicitly approved or rejected.
+
+Action requests now use a small standardized contract:
+
+- `send_email`: `{ "to": string, "subject"?: string, "body"?: string }`
+- `modify_calendar`: `{ "event": string, "date"?: string, "calendar_id"?: string }`
+- `delete_file`: `{ "path": string }`
+- `external_share`: `{ "target": string, "resource"?: string }`
+- `read_file`: `{ "path": string }`
+- `search_memory`: `{ "query": string, "limit"?: number }`
+
+## 5-minute demo flow
+
+1. Run `npm install`.
+2. Run `npm run demo:seed`.
+3. Run `npm run dev`.
+4. Call `curl -X POST http://localhost:4187/workspace/scan`.
+5. Call `curl http://localhost:4187/memories`.
+6. Call `curl -X POST http://localhost:4187/checkpoint`.
+7. Call `curl -X POST http://localhost:4187/approvals -H 'content-type: application/json' -d '{"action":"send_email","requested_by":"aid:executor","payload":{"to":"demo@example.com"}}'`.
+8. Or call `curl -X POST http://localhost:4187/actions/intercept -H 'content-type: application/json' -d '{"action":"send_email","requested_by":"aid:executor","payload":{"to":"demo@example.com"}}'`.
+
+Within a few minutes you should see:
+
+- `.meta/*.json` sidecar files in the workspace
+- `data/audit/audit.log`
+- `data/snapshots/ckpt-*/manifest.json`
+- `data/approvals.json`
+
+## OpenClaw integration
+
+This MVP does not replace OpenClaw. It wraps the same local workspace and treats OpenClaw memory Markdown as the source documents.
+
+- `MEMORY.md`, `memory/*.md`, and optional `DREAMS.md` remain plain Markdown files used by OpenClaw.
+- AegIsDATA-lite adds `.meta/*.json` sidecars beside that workspace.
+- Risky tool-origin actions can be routed into the local approval queue and replayed only after approval through the OpenClaw action harness.
+- Checkpoints and audit logs stay local on disk.
+
+## API summary
+
+- `GET /health`
+- `POST /workspace/scan`
+- `GET /memories`
+- `GET /memories/:id`
+- `POST /verify/:id`
+- `POST /quarantine/:id`
+- `POST /recall`
+- `POST /actions/intercept`
+- `POST /actions/preview`
+- `POST /actions/replay/:approvalId`
+- `POST /integrity/baseline`
+- `POST /integrity/check`
+- `GET /telemetry`
+- `GET /telemetry/:telemetryId`
+- `POST /telemetry/compare`
+- `GET /dashboard`
+- `POST /mcp`
+- `POST /mcp/intercept`
+- `POST /reviewer/attest`
+- `POST /v1/sessions/start`
+- `POST /v1/events/user-prompt`
+- `POST /v1/events/permission-request`
+- `POST /v1/events/stop`
+- `POST /v1/tool/decision`
+- `POST /v1/tool/result`
+- `POST /v1/evidence/verify`
+- `GET /approval-queue`
+- `POST /approval-queue/:id/approve`
+- `POST /approval-queue/:id/reject`
+- `POST /checkpoint`
+- `POST /restore/:checkpointId`
+- `GET /approvals`
+- `POST /approvals`
+- `POST /approvals/:id/approve`
+- `POST /approvals/:id/reject`
+- `POST /checkpoints`
+- `GET /checkpoints`
+- `POST /restore`
+- `POST /mcp/proxy`
+
+Success responses use `{ "ok": true, "data": ... }`.
+Error responses use `{ "ok": false, "error": { "code": "...", "message": "..." } }`.
+
+## Aegis ATV demo flow
+
+1. Create a fresh integrity baseline:
+
+```bash
+curl -X POST http://localhost:4187/integrity/baseline \
+  -H 'content-type: application/json' \
+  -d '{}'
+```
+
+2. Preview a guarded action:
+
+```bash
+curl -X POST http://localhost:4187/actions/preview \
+  -H 'content-type: application/json' \
+  -d '{
+    "action":"external_share",
+    "requested_by":"aid:executor",
+    "payload":{"target":"https://partner.example/upload","resource":"memory/task-001.md"},
+    "context":{
+      "declared_intent":"share the approved summary with the partner",
+      "sources":[
+        {"kind":"repo_file","label":"AGENTS.md","content":"share the summary","stance":"supporting"},
+        {"kind":"user_prompt","label":"direct user request","content":"do not share outside the workspace","stance":"opposing"}
+      ],
+      "cost":{"input_tokens":1600,"output_tokens":220,"reasoning_tokens":400,"estimated_usd":0.12}
+    }
+  }'
+```
+
+The response includes:
+
+- `verdict`
+- `blast_radius`
+- `signals`
+- `provenance`
+- `integrity`
+- `telemetry.telemetry_id`
+- `telemetry.vector_sha256`
+
+For a live demo, focus the audience on those summary fields.
+Do not expand the full `telemetry.vector` unless the audience specifically wants the raw schema-level representation.
+
+For a customer or investor walkthrough, use the full runbook in [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md).
+Use the final pre-demo gate in [docs/FINAL_DEMO_CHECKLIST.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/FINAL_DEMO_CHECKLIST.md) before changing PR status or going live.
+For enterprise-oriented customer demos and operator onboarding, also use:
+
+- [customer value demos](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/AEGIS_ATV_CUSTOMER_VALUE_DEMOS.md)
+- [user manual](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/AEGIS_ATV_USER_MANUAL.md)
+
+## Action harness demo
+
+1. `curl -X POST http://localhost:4187/actions/intercept -H 'content-type: application/json' -d '{"action":"send_email","requested_by":"aid:executor","payload":{"to":"demo@example.com"}}'`
+2. Read the returned `approval_id`.
+3. `curl -X POST http://localhost:4187/approval-queue/<approval_id>/approve`
+4. `curl -X POST http://localhost:4187/actions/replay/<approval_id>`
+
+For a pre-bundled customer-value demo script:
+
+- `npm run demo:enterprise`
+
+High-risk actions are queued first. Non-risk actions execute immediately through the demo executor currently wired into the daemon.
+The daemon currently routes execution through an OpenClaw bridge adapter. By default it uses an in-memory bridge, but you can point it at a real local command:
+
+```bash
+export OPENCLAW_BRIDGE_COMMAND=/path/to/openclaw-bridge
+export OPENCLAW_BRIDGE_ARGS='["--stdio"]'
+export OPENCLAW_BRIDGE_CWD=/path/to/openclaw/runtime
+```
+
+The command bridge contract is simple:
+
+- stdin receives one JSON object: `{ "action": "...", "payload": { ... } }`
+- stdout must return one JSON object with the execution result
+- non-zero exit codes are treated as bridge failures
+
+## Enforcement model
+
+Aegis ATV for Codex should be operated with `MCP proxy primary` enforcement.
+
+- `MCP proxy` is the authoritative enforcement point for pre-execution `allow`, `require_approval`, and `block` decisions.
+- `Desktop hooks` are useful for lifecycle visibility and best-effort signal capture, but in the currently tested Codex desktop build they behaved as `optional/non-blocking` rather than a dependable hard-stop control plane.
+- `Managed defaults` and `managed requirements` can still be deployed for policy consistency, but customer and pilot commitments should assume the proxy is the real control point.
+
+This means customer demos, pilot rollouts, and product packaging should describe the architecture as `Codex plug-in surface + Aegis MCP proxy enforcement + telemetry/audit services`, not as `desktop hooks only`.
+
+## Codex hooks and MCP proxy deployment
+
+Deployment-oriented templates are included here:
+
+- [deployment/codex/hooks.json](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/hooks.json)
+- [deployment/codex/managed-config.toml](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/managed-config.toml)
+
+Current validation result:
+
+- `desktop hooks`: optional/non-blocking in the tested Codex desktop build
+- `MCP proxy`: primary enforcement path and recommended production/pilot control point
+
+The hook adapter reads Codex lifecycle events from stdin and emits an Aegis gating decision:
+
+```bash
+cat pkg/codex-plugin-aegis/examples/session-start.json | npm run hook:codex
+```
+
+The stdio MCP shim exposes the proxy as a local MCP server process:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | npm run mcp:stdio
+```
+
+To connect a real upstream MCP server, set either:
+
+```bash
+export AEGIS_MCP_UPSTREAM_URL=http://localhost:9000/mcp
+```
+
+or:
+
+```bash
+export AEGIS_MCP_UPSTREAM_COMMAND=/path/to/upstream-mcp
+export AEGIS_MCP_UPSTREAM_ARGS='["--stdio"]'
+export AEGIS_MCP_UPSTREAM_CWD=/path/to/upstream-runtime
+```
+
+## MCP descriptor drift enforcement
+
+The proxy now baselines upstream `tools/list` descriptors and blocks execution when the runtime descriptor hash changes.
+
+What this means in practice:
+
+- the first proxy startup or `tools/list` call captures a descriptor baseline
+- later tool-schema drift is surfaced as `mcp_descriptor_drift`
+- affected MCP tool calls move to `block` before forwarding
+
+For a clean live demo:
+
+1. Start with a stable upstream MCP server.
+2. Prime the baseline with `POST /mcp/proxy` or `npm run mcp:stdio`.
+3. Change the upstream tool list or schema.
+4. Re-run the same MCP tool call and show the proxy returning a block with descriptor metadata.
+
+## Best live-demo order
+
+Use this order for the cleanest 5-minute walkthrough:
+
+1. `POST /integrity/baseline`
+2. safe preview showing `allow`
+3. risky preview showing `require_approval`
+4. misleading preview showing `block`
+5. mutate one tracked artifact
+6. `POST /integrity/check`
+7. re-run the risky preview and show that integrity drift now upgrades the result to `block`
+
+## Operator surface
+
+The operator-facing telemetry surface now includes:
+
+- `GET /telemetry` for recent telemetry summaries
+- `GET /telemetry/:telemetryId` for one stored evaluation record
+- `POST /telemetry/compare` for comparing a small set of telemetry ids
+- `GET /dashboard` for a lightweight HTML view of recent verdicts and signals
+
+The advanced demo surface also includes:
+
+- `POST /mcp` for a more realistic MCP transport flow with `initialize`, `tools/list`, and `tools/call`
+- `POST /mcp/proxy` for forwarding real MCP calls through Aegis policy and descriptor-drift enforcement
+- `POST /mcp/intercept` for policy-gating an MCP-style tool call and returning a JSON-RPC-shaped allow, approval, or block response
+- `POST /reviewer/attest` for comparing two reviewer outputs and deciding whether their cross-attestation is trustworthy enough to accept
+
+The `tools/call` responses now include:
+
+- human-readable `content`
+- machine-readable `structuredContent`
+- `_meta` fields carrying verdict, telemetry id, vector hash, approval id, or attestation metrics depending on the tool
+
+The `POST /mcp` transport now also supports:
+
+- `resources/list` for dashboard and telemetry resources
+- `resources/templates/list` for dynamic telemetry and audit URI templates
+- `prompts/list` for reusable demo and operator triage prompts
+- `resources/read` for fetching live dashboard, telemetry, integrity, or approval audit resource content
+- `prompts/get` for retrieving ready-to-use demo and operator prompt payloads
+
+The dashboard now includes live demo controls for:
+
+- approving or rejecting pending approvals
+- creating a fresh integrity baseline
+- re-running integrity drift checks without leaving the page
+- replaying approved actions
+- comparing the latest two telemetry records
+- opening a telemetry detail drawer and reading the recent approval audit trail
+- pinning a telemetry detail while comparing nearby events and filtering audit trails by event family
+
+Example realistic MCP transport flow:
+
+```bash
+curl -X POST http://localhost:4187/mcp \
+  -H 'content-type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":1,
+    "method":"initialize",
+    "params":{"protocolVersion":"2025-03-26","clientInfo":{"name":"Codex","version":"1.0.0"}}
+  }'
+```
+
+```bash
+curl -X POST http://localhost:4187/mcp \
+  -H 'content-type: application/json' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":2,
+    "method":"tools/call",
+    "params":{
+      "name":"aegis.preview_action",
+      "arguments":{
+        "action":"read_file",
+        "requested_by":"aid:mcp:client",
+        "payload":{"path":"MEMORY.md"},
+        "context":{"declared_intent":"inspect canonical memory only"}
+      }
+    }
+  }'
+```
+
+Example MCP-style interception request:
+
+```bash
+curl -X POST http://localhost:4187/mcp/intercept \
+  -H 'content-type: application/json' \
+  -d '{
+    "id":"demo-1",
+    "tool_name":"external_share",
+    "arguments":{"target":"https://partner.example/upload","resource":"memory/task-001.md"},
+    "context":{
+      "requested_by":"aid:mcp:client",
+      "declared_intent":"summarize the workspace only",
+      "side_effect":true,
+      "sources":[
+        {"kind":"user_prompt","label":"operator request","content":"review only, do not publish","stance":"supporting"}
+      ]
+    }
+  }'
+```
+
+Example reviewer cross-attestation request:
+
+```bash
+curl -X POST http://localhost:4187/reviewer/attest \
+  -H 'content-type: application/json' \
+  -d '{
+    "left":{
+      "reviewer_id":"aid:reviewer:1",
+      "verdict":"block",
+      "summary":"The tool call attempts to publish outside the workspace.",
+      "provenance":[{"kind":"user_prompt","label":"operator request","content":"review only","stance":"supporting"}]
+    },
+    "right":{
+      "reviewer_id":"aid:reviewer:2",
+      "verdict":"block",
+      "summary":"The requested action would exfiltrate content beyond the approved scope.",
+      "provenance":[{"kind":"repo_file","label":"AGENTS.md","content":"do not exfiltrate workspace data","stance":"supporting"}]
+    }
+  }'
+```
+
+## Data layout
+
+- `data/audit/audit.log`
+- `data/approvals.json`
+- `data/snapshots/<checkpoint-id>/`
+- `<workspace>/.meta/*.json`
+
+## Development
+
+- `npm test`
+- `npm run build`
+- `npm run demo:seed`
+- `npm run launchd:generate`
+
+## Mac mini deployment
+
+1. Build the project:
+
+```bash
+npm run build
+```
+
+2. Generate deployment artifacts:
+
+```bash
+npm run launchd:generate
+```
+
+This creates:
+
+- `deployment/com.aegisdata.openclaw-lite.plist`
+- `deployment/openclaw-bridge-template.sh`
+
+3. If you have a real OpenClaw bridge command, export it before generating:
+
+```bash
+export OPENCLAW_BRIDGE_COMMAND=/absolute/path/to/openclaw-bridge
+export OPENCLAW_BRIDGE_ARGS='["--stdio"]'
+export OPENCLAW_BRIDGE_CWD=/absolute/path/to/openclaw/runtime
+```
+
+4. Copy the plist into `~/Library/LaunchAgents/`:
+
+```bash
+cp deployment/com.aegisdata.openclaw-lite.plist ~/Library/LaunchAgents/
+launchctl unload ~/Library/LaunchAgents/com.aegisdata.openclaw-lite.plist 2>/dev/null || true
+launchctl load ~/Library/LaunchAgents/com.aegisdata.openclaw-lite.plist
+launchctl start com.aegisdata.openclaw-lite
+```
+
+5. Check logs:
+
+```bash
+tail -f data/launchd.stdout.log
+tail -f data/launchd.stderr.log
+```
+
+The generated bridge shell script is a template only. Replace its command body with the real OpenClaw invocation path used on your Mac mini.
+
+
+## Codex MVP operations
+
+- Hook payload contract: [docs/CODEX_HOOK_COMPATIBILITY_MATRIX.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/CODEX_HOOK_COMPATIBILITY_MATRIX.md)
+- Golden path script: [scripts/codex-golden-path.sh](/Users/chanikpark/Documents/aegis_atv_codex_mvp/scripts/codex-golden-path.sh)
+- Evidence verification endpoint: `POST /v1/evidence/verify`

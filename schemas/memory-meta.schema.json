@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MemoryMetadata",
+  "type": "object",
+  "required": [
+    "memory_id",
+    "source_path",
+    "aid",
+    "created_at",
+    "last_accessed_at",
+    "state",
+    "trust_score",
+    "sensitivity",
+    "retention_class",
+    "lineage",
+    "checkpoint_refs"
+  ],
+  "properties": {
+    "memory_id": { "type": "string" },
+    "source_path": { "type": "string" },
+    "aid": { "type": "string" },
+    "created_at": { "type": "string" },
+    "last_accessed_at": { "type": "string" },
+    "verified_at": { "type": "string" },
+    "expires_at": { "type": "string" },
+    "checkpoint_at": { "type": "string" },
+    "state": {
+      "type": "string",
+      "enum": ["draft", "verified", "committed", "quarantined"]
+    },
+    "trust_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "sensitivity": {
+      "type": "string",
+      "enum": ["low", "medium", "high"]
+    },
+    "retention_class": {
+      "type": "string",
+      "enum": ["ephemeral", "standard", "long_term"]
+    },
+    "lineage": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "checkpoint_refs": {
+      "type": "array",
+      "items": { "type": "string" }
+    }
+  }
+}
