@@ -14,11 +14,18 @@ async function makeIntegrityStore() {
   tempDirs.push(repoRoot, dataRoot);
 
   await fs.mkdir(path.join(repoRoot, "plugins", "aegis-atv", ".codex-plugin"), { recursive: true });
+  await fs.mkdir(path.join(repoRoot, "deployment", "codex"), { recursive: true });
+  await fs.mkdir(path.join(repoRoot, ".agents", "plugins"), { recursive: true });
   await fs.mkdir(path.join(repoRoot, "src", "adapters"), { recursive: true });
   await fs.mkdir(path.join(repoRoot, "src", "core"), { recursive: true });
+  await fs.writeFile(path.join(repoRoot, "AGENTS.md"), "# agents\n", "utf8");
   await fs.writeFile(path.join(repoRoot, "README.md"), "# demo\n", "utf8");
   await fs.writeFile(path.join(repoRoot, "package.json"), '{"name":"demo"}\n', "utf8");
+  await fs.writeFile(path.join(repoRoot, "deployment", "codex", "hooks.json"), '{"hooks":{}}\n', "utf8");
+  await fs.writeFile(path.join(repoRoot, "deployment", "codex", "managed-config.toml"), 'approval_policy="assisted"\n', "utf8");
+  await fs.writeFile(path.join(repoRoot, ".agents", "plugins", "marketplace.json"), '{"plugins":[]}\n', "utf8");
   await fs.writeFile(path.join(repoRoot, "src", "adapters", "mcporter-hook.ts"), "export {};\n", "utf8");
+  await fs.writeFile(path.join(repoRoot, "src", "adapters", "mcp-proxy.ts"), "export {};\n", "utf8");
   await fs.writeFile(path.join(repoRoot, "src", "core", "action-firewall.ts"), "export {};\n", "utf8");
   await fs.writeFile(
     path.join(repoRoot, "plugins", "aegis-atv", ".codex-plugin", "plugin.json"),

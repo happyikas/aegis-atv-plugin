@@ -3,7 +3,13 @@ import {
   mcpInterceptRequestSchema,
   mcpTransportRequestSchema,
   memoryMetadataSchema,
+  permissionRequestEventRequestSchema,
   reviewerAttestationRequestSchema,
+  sessionStartRequestSchema,
+  stopEventRequestSchema,
+  toolDecisionRequestSchema,
+  toolResultEventRequestSchema,
+  userPromptEventRequestSchema,
 } from "../../core/schema.js";
 
 describe("memory metadata schema", () => {
@@ -164,5 +170,52 @@ describe("memory metadata schema", () => {
     });
 
     expect(parsed.artifact_id).toBe("pr-1");
+  });
+
+  it("accepts session start, prompt, decision, and tool result payloads", () => {
+    const session = sessionStartRequestSchema.parse({
+      agent_id: "aid:executor",
+      workspace: "/repo",
+    });
+    const prompt = userPromptEventRequestSchema.parse({
+      session_id: "sess-1",
+      agent_id: "aid:executor",
+      prompt: "Review this repo",
+    });
+    const decision = toolDecisionRequestSchema.parse({
+      session_id: "sess-1",
+      action: "read_file",
+      payload: { path: "README.md" },
+    });
+    const result = toolResultEventRequestSchema.parse({
+      session_id: "sess-1",
+      trace_id: "trace-1",
+      agent_id: "aid:executor",
+      action: "read_file",
+      status: "success",
+    });
+
+    expect(session.agent_id).toBe("aid:executor");
+    expect(prompt.prompt).toBe("Review this repo");
+    expect(decision.action).toBe("read_file");
+    expect(result.status).toBe("success");
+  });
+
+  it("accepts permission request and stop event payloads", () => {
+    const permission = permissionRequestEventRequestSchema.parse({
+      session_id: "sess-1",
+      agent_id: "aid:executor",
+      action: "send_email",
+      payload: { to: "demo@example.com" },
+    });
+    const stop = stopEventRequestSchema.parse({
+      session_id: "sess-1",
+      agent_id: "aid:executor",
+      result_summary: "done",
+      token_count: 10,
+    });
+
+    expect(permission.action).toBe("send_email");
+    expect(stop.token_count).toBe(10);
   });
 });

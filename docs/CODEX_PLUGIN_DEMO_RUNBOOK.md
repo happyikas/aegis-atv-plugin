@@ -28,16 +28,16 @@ Use this runbook to demonstrate the Aegis ATV Codex plugin concept as a product,
 
 If you want a copy-paste version of the three core preview calls, use:
 
-- [scripts/live-demo-preview.sh](/Users/chanikpark/Documents/New%20project/scripts/live-demo-preview.sh)
-- [docs/LIVE_DEMO_TALK_TRACK.md](/Users/chanikpark/Documents/New%20project/docs/LIVE_DEMO_TALK_TRACK.md)
+- [scripts/live-demo-preview.sh](/Users/chanikpark/Documents/aegis_atv_codex_mvp/scripts/live-demo-preview.sh)
+- [docs/LIVE_DEMO_TALK_TRACK.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/LIVE_DEMO_TALK_TRACK.md)
 
 ### Step 1: Show the plugin package
 
 Open:
 
-- [plugins/aegis-atv/.codex-plugin/plugin.json](/Users/chanikpark/Documents/New%20project/plugins/aegis-atv/.codex-plugin/plugin.json)
-- [plugins/aegis-atv/README.md](/Users/chanikpark/Documents/New%20project/plugins/aegis-atv/README.md)
-- [plugins/aegis-atv/skills/aegis-atv-demo/SKILL.md](/Users/chanikpark/Documents/New%20project/plugins/aegis-atv/skills/aegis-atv-demo/SKILL.md)
+- [plugins/aegis-atv/.codex-plugin/plugin.json](/Users/chanikpark/Documents/aegis_atv_codex_mvp/plugins/aegis-atv/.codex-plugin/plugin.json)
+- [plugins/aegis-atv/README.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/plugins/aegis-atv/README.md)
+- [plugins/aegis-atv/skills/aegis-atv-demo/SKILL.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/plugins/aegis-atv/skills/aegis-atv-demo/SKILL.md)
 
 Say:
 
@@ -180,6 +180,31 @@ Point out:
 - `allow` becomes a forwarded result, while risky or conflicting calls stay in-band as structured errors
 - this is the cleanest bridge from the current demo into real MCP transport interception
 
+Then show the stronger forwarding path:
+
+```bash
+curl -X POST http://localhost:4187/mcp/proxy \
+  -H 'content-type: application/json' \
+  -H 'x-aegis-agent-id: aid:mcp:proxy' \
+  -H 'x-aegis-session-id: sess-proxy' \
+  -H 'x-aegis-declared-intent: inspect canonical memory only' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":"proxy-1",
+    "method":"tools/call",
+    "params":{
+      "name":"upstream.echo",
+      "arguments":{"path":"MEMORY.md"}
+    }
+  }'
+```
+
+Point out:
+
+- this endpoint actually forwards to the configured upstream MCP transport
+- Aegis adds `_meta` fields for verdict, telemetry id, trace id, and descriptor status
+- this is the enforcement path you would hide behind the enterprise MCP allowlist
+
 If the audience is more technical, show the more realistic MCP transport endpoint:
 
 ```bash
@@ -218,6 +243,37 @@ Point out:
 - `initialize`, `tools/list`, and `tools/call` are enough to make the demo feel familiar to MCP-aware buyers
 - the Aegis policy still shows up in `structuredContent`, not as an afterthought
 
+### Step 6b: Show descriptor drift becoming a block
+
+Before the meeting, prepare an upstream MCP stub whose `tools/list` output can be changed.
+
+Run one forwarded MCP call first so Aegis captures the initial descriptor baseline.
+
+Then change the upstream tool list or input schema and re-run:
+
+```bash
+curl -X POST http://localhost:4187/mcp/proxy \
+  -H 'content-type: application/json' \
+  -H 'x-aegis-agent-id: aid:mcp:proxy' \
+  -H 'x-aegis-session-id: sess-proxy' \
+  -H 'x-aegis-declared-intent: inspect canonical memory only' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":"proxy-drift-1",
+    "method":"tools/call",
+    "params":{
+      "name":"upstream.echo",
+      "arguments":{"path":"MEMORY.md"}
+    }
+  }'
+```
+
+Point out:
+
+- the call now returns a block before forwarding
+- the response metadata carries `descriptorHash`, `descriptorBaselineHash`, and `descriptorClean`
+- this makes MCP schema or manifest drift visible as a pre-execution governance event, not a post-incident surprise
+
 ### Step 7: Show reviewer cross-attestation
 
 Run:
@@ -255,6 +311,11 @@ For a product framing demo, explain the intended flow:
 2. Use the `aegis-atv-demo` skill to preview actions before execution.
 3. Route high-risk actions through approval and replay only after a human or governance step.
 4. Extend the same control plane to MCP tool interception and reviewer cross-attestation without changing the operator story.
+
+You can also show the intended Codex deployment files:
+
+- [deployment/codex/hooks.json](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/hooks.json)
+- [deployment/codex/managed-config.toml](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/managed-config.toml)
 
 ## Reset after the demo
 

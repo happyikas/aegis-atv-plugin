@@ -8,6 +8,9 @@ import type { CheckpointManager } from "../daemon/checkpoint.js";
 import type { OpenClawWorkspaceAdapter } from "../adapters/openclaw-workspace.js";
 import type { IntegrityBaselineStore } from "../core/integrity.js";
 import type { TelemetryStore } from "../core/telemetry-store.js";
+import type { EventCollector } from "../core/event-collector.js";
+import type { AegisControlPlane } from "../core/control-plane.js";
+import type { AegisMcpProxy } from "../adapters/mcp-proxy.js";
 
 interface ServerDeps {
   workspace: OpenClawWorkspaceAdapter;
@@ -17,6 +20,9 @@ interface ServerDeps {
   actions: OpenClawActionHarness;
   integrity: IntegrityBaselineStore;
   telemetry: TelemetryStore;
+  collector: EventCollector;
+  controlPlane: AegisControlPlane;
+  mcpProxy: AegisMcpProxy;
 }
 
 export function handleApiError(error: unknown, res: express.Response): void {

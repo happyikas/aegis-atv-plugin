@@ -122,14 +122,28 @@ export class ActionFirewall {
       ? await this.integrity.check(request.context?.artifact_paths)
       : undefined;
 
-    const signals = [
+  const signals = [
       ...provenance.risk_flags,
       ...divergence.reasons,
       ...(integrity?.mutations.map((mutation) => `artifact_${mutation.status}:${mutation.path}`) ?? []),
     ];
 
+    if (request.action === "mcp_tool") {
+      const payload = request.payload as {
+        descriptor_drift?: boolean;
+      };
+      if (payload.descriptor_drift === true) {
+        signals.push("mcp_descriptor_drift");
+      }
+    }
+
     let verdict: FirewallVerdict = "allow";
-    if ((integrity && !integrity.clean) || divergence.violated) {
+    if (
+      (request.action === "mcp_tool" &&
+        (request.payload as { descriptor_drift?: boolean }).descriptor_drift === true) ||
+      (integrity && !integrity.clean) ||
+      divergence.violated
+    ) {
       verdict = "block";
     } else if (
       provenance.directive_precedence_violation ||

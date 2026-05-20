@@ -8,7 +8,9 @@
     "dev": "tsx src/daemon/index.ts",
     "demo:seed": "tsx scripts/demo-seed.ts",
     "demo:enterprise": "bash scripts/enterprise-value-demo.sh",
+    "hook:codex": "node --import tsx pkg/codex-plugin-aegis/src/hook.ts",
     "launchd:generate": "tsx scripts/generate-launchd.ts",
+    "mcp:stdio": "node --import tsx scripts/mcp-stdio-shim.ts",
     "start": "node dist/daemon/index.js",
     "test": "vitest run",
     "test:watch": "vitest"

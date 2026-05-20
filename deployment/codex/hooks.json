@@ -1,0 +1,70 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "zsh /Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-hook.sh",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

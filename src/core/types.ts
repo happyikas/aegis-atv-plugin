@@ -73,6 +73,19 @@ export interface ActionExecutionResult {
   evaluation?: ActionEvaluation;
 }
 
+export interface SessionRecord {
+  session_id: string;
+  tenant_id: string;
+  agent_id: string;
+  codex_surface: string;
+  workspace: string;
+  repo?: string;
+  model?: string;
+  sandbox_mode?: string;
+  approval_policy?: string;
+  started_at: string;
+}
+
 export interface CheckpointManifest {
   checkpoint_id: string;
   created_at: string;
@@ -126,6 +139,10 @@ export interface McpToolPayload {
   arguments: Record<string, unknown>;
   read_only?: boolean;
   side_effect?: boolean;
+  descriptor_hash?: string;
+  descriptor_baseline_hash?: string;
+  descriptor_drift?: boolean;
+  tool_count?: number;
 }
 
 export interface ActionContext {
@@ -270,9 +287,215 @@ export interface TelemetryComparison {
 }
 
 export interface AuditRecord {
+  sequence: number;
   event: string;
   timestamp: string;
+  prev_record_hash?: string;
+  record_hash: string;
+  signature: string;
   details: Record<string, unknown>;
+}
+
+export interface AtvLiteRecord {
+  schema_version: "ATV-Lite-v1";
+  tenant_id: string;
+  agent_id: string;
+  session_id: string;
+  trace_id: string;
+  span_id: string;
+  parent_span_id?: string;
+  codex_surface: string;
+  workspace?: string;
+  repo?: string;
+  model?: string;
+  sandbox_mode?: string;
+  approval_policy?: string;
+  declared_intent?: string;
+  declared_intent_hash?: string;
+  action: {
+    action_type: ActionName;
+    tool_handle: string;
+    payload_hash: string;
+    normalized_payload: Record<string, unknown>;
+    blast_radius: BlastRadius;
+  };
+  provenance: {
+    source_count: number;
+    highest_trust_supporting: number;
+    highest_trust_opposing: number;
+    directive_precedence_violation: boolean;
+    escalated_by_lower_trust: boolean;
+    risk_flags: string[];
+  };
+  verification: {
+    verdict: FirewallVerdict;
+    signals: string[];
+    divergence_score: number;
+    divergence_violated: boolean;
+    integrity_clean?: boolean;
+  };
+  cost: {
+    input_tokens?: number;
+    output_tokens?: number;
+    reasoning_tokens?: number;
+    estimated_usd?: number;
+  };
+  result?: {
+    status: "success" | "error" | "blocked" | "queued";
+    result_hash?: string;
+    duration_ms?: number;
+    approval_id?: string;
+  };
+  commitment: {
+    atv_hash: string;
+    sequence?: number;
+    audit_record_hash?: string;
+    signature?: string;
+  };
+  generated_at: string;
+}
+
+export type CollectedEventType =
+  | "session_start"
+  | "user_prompt"
+  | "tool_decision"
+  | "tool_result"
+  | "permission_request"
+  | "session_stop";
+
+export interface CollectedEventRecord {
+  event_id: string;
+  event_type: CollectedEventType;
+  recorded_at: string;
+  tenant_id?: string;
+  agent_id?: string;
+  session_id?: string;
+  trace_id?: string;
+  span_id?: string;
+  payload_hash: string;
+  atv_hash?: string;
+  audit_sequence?: number;
+  data: Record<string, unknown>;
+}
+
+export interface SessionStartRequest {
+  session_id?: string;
+  tenant_id?: string;
+  agent_id: string;
+  codex_surface?: string;
+  workspace: string;
+  repo?: string;
+  model?: string;
+  sandbox_mode?: string;
+  approval_policy?: string;
+}
+
+export interface UserPromptEventRequest {
+  session_id: string;
+  tenant_id?: string;
+  agent_id: string;
+  prompt: string;
+  declared_intent?: string;
+  source_locator?: string;
+}
+
+export interface ToolDecisionRequest {
+  tenant_id?: string;
+  agent_id?: string;
+  session_id: string;
+  trace_id?: string;
+  span_id?: string;
+  parent_span_id?: string;
+  codex_surface?: string;
+  workspace?: string;
+  repo?: string;
+  model?: string;
+  sandbox_mode?: string;
+  approval_policy?: string;
+  action: ActionName;
+  requested_by?: string;
+  payload: Record<string, unknown>;
+  context?: ActionContext;
+}
+
+export interface ToolResultEventRequest {
+  tenant_id?: string;
+  agent_id: string;
+  session_id: string;
+  trace_id: string;
+  span_id?: string;
+  action: ActionName;
+  status: "success" | "error" | "blocked" | "queued";
+  duration_ms?: number;
+  output?: string;
+  output_hash?: string;
+  approval_id?: string;
+}
+
+export interface PermissionRequestEventRequest {
+  tenant_id?: string;
+  agent_id: string;
+  session_id: string;
+  trace_id?: string;
+  span_id?: string;
+  action: ActionName;
+  requested_by?: string;
+  payload: Record<string, unknown>;
+  codex_reason?: string;
+  proposed_scope?: string;
+}
+
+export interface StopEventRequest {
+  tenant_id?: string;
+  agent_id: string;
+  session_id: string;
+  trace_id?: string;
+  conversation_id?: string;
+  result_summary?: string;
+  token_count?: number;
+  status?: "completed" | "cancelled" | "error";
+}
+
+export interface CodexHookSessionStartEvent extends SessionStartRequest {
+  event: "SessionStart";
+}
+
+export interface CodexHookUserPromptEvent extends UserPromptEventRequest {
+  event: "UserPromptSubmit";
+}
+
+export interface CodexHookPreToolUseEvent extends ToolDecisionRequest {
+  event: "PreToolUse";
+}
+
+export interface CodexHookPermissionRequestEvent extends PermissionRequestEventRequest {
+  event: "PermissionRequest";
+}
+
+export interface CodexHookPostToolUseEvent extends ToolResultEventRequest {
+  event: "PostToolUse";
+}
+
+export interface CodexHookStopEvent extends StopEventRequest {
+  event: "Stop";
+}
+
+export type CodexHookEvent =
+  | CodexHookSessionStartEvent
+  | CodexHookUserPromptEvent
+  | CodexHookPreToolUseEvent
+  | CodexHookPermissionRequestEvent
+  | CodexHookPostToolUseEvent
+  | CodexHookStopEvent;
+
+export interface CodexHookOutcome {
+  event: CodexHookEvent["event"];
+  continue: boolean;
+  event_id?: string;
+  verdict?: FirewallVerdict;
+  telemetry_id?: string;
+  approval_id?: string;
+  detail?: string;
 }
 
 export interface McpInterceptRequest {
@@ -367,6 +590,22 @@ export interface McpPromptsGetRequest {
     name: string;
     arguments?: Record<string, unknown>;
   };
+}
+
+export interface McpProxyContext {
+  tenant_id?: string;
+  agent_id: string;
+  session_id: string;
+  requested_by?: string;
+  declared_intent?: string;
+  workspace?: string;
+  repo?: string;
+  model?: string;
+  sandbox_mode?: string;
+  approval_policy?: string;
+  read_only?: boolean;
+  side_effect?: boolean;
+  sources?: InstructionSourceInput[];
 }
 
 export interface McpPingRequest {

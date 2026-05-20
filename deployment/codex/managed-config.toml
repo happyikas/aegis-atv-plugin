@@ -1,0 +1,16 @@
+# Managed defaults for Codex desktop.
+# Keep this file limited to Codex-native defaults and MCP wiring.
+
+[features]
+codex_hooks = true
+
+[mcp_servers."aegis-mcp-proxy"]
+command = "/bin/zsh"
+args = ["/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/run-mcp-stdio.sh"]
+cwd = "/Users/chanikpark/Documents/aegis_atv_codex_mvp"
+enabled = true
+
+[mcp_servers."aegis-mcp-proxy".env]
+AEGIS_DATA_DIR = "/Users/chanikpark/Documents/aegis_atv_codex_mvp/data"
+OPENCLAW_WORKSPACE = "/Users/chanikpark/.openclaw/workspace"
+PORT = "4187"

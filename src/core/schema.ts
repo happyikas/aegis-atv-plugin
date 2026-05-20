@@ -116,6 +116,84 @@ export const approvalRequestSchema = z.object({
   payload: z.record(z.unknown()).default({}),
 });
 
+export const sessionStartRequestSchema = z.object({
+  session_id: z.string().optional(),
+  tenant_id: z.string().default("local-tenant"),
+  agent_id: z.string().min(1),
+  codex_surface: z.string().default("codex-cli"),
+  workspace: z.string().min(1),
+  repo: z.string().optional(),
+  model: z.string().optional(),
+  sandbox_mode: z.string().optional(),
+  approval_policy: z.string().optional(),
+});
+
+export const userPromptEventRequestSchema = z.object({
+  session_id: z.string().min(1),
+  tenant_id: z.string().default("local-tenant"),
+  agent_id: z.string().min(1),
+  prompt: z.string().min(1),
+  declared_intent: z.string().optional(),
+  source_locator: z.string().optional(),
+});
+
+export const toolDecisionRequestSchema = z.object({
+  tenant_id: z.string().default("local-tenant"),
+  agent_id: z.string().optional(),
+  session_id: z.string().min(1),
+  trace_id: z.string().optional(),
+  span_id: z.string().optional(),
+  parent_span_id: z.string().optional(),
+  codex_surface: z.string().default("codex-cli"),
+  workspace: z.string().optional(),
+  repo: z.string().optional(),
+  model: z.string().optional(),
+  sandbox_mode: z.string().optional(),
+  approval_policy: z.string().optional(),
+  action: actionNameSchema,
+  requested_by: z.string().default("aid:executor"),
+  payload: z.record(z.unknown()).default({}),
+  context: actionContextSchema,
+});
+
+export const toolResultEventRequestSchema = z.object({
+  tenant_id: z.string().default("local-tenant"),
+  agent_id: z.string().min(1),
+  session_id: z.string().min(1),
+  trace_id: z.string().min(1),
+  span_id: z.string().optional(),
+  action: actionNameSchema,
+  status: z.enum(["success", "error", "blocked", "queued"]),
+  duration_ms: z.number().int().nonnegative().optional(),
+  output: z.string().optional(),
+  output_hash: z.string().optional(),
+  approval_id: z.string().optional(),
+});
+
+export const permissionRequestEventRequestSchema = z.object({
+  tenant_id: z.string().default("local-tenant"),
+  agent_id: z.string().min(1),
+  session_id: z.string().min(1),
+  trace_id: z.string().optional(),
+  span_id: z.string().optional(),
+  action: actionNameSchema,
+  requested_by: z.string().default("aid:executor"),
+  payload: z.record(z.unknown()).default({}),
+  codex_reason: z.string().optional(),
+  proposed_scope: z.string().optional(),
+});
+
+export const stopEventRequestSchema = z.object({
+  tenant_id: z.string().default("local-tenant"),
+  agent_id: z.string().min(1),
+  session_id: z.string().min(1),
+  trace_id: z.string().optional(),
+  conversation_id: z.string().optional(),
+  result_summary: z.string().optional(),
+  token_count: z.number().int().nonnegative().optional(),
+  status: z.enum(["completed", "cancelled", "error"]).optional(),
+});
+
 export const sendEmailPayloadSchema = z.object({
   to: z.string().min(1),
   subject: z.string().optional(),
@@ -152,6 +230,10 @@ export const mcpToolPayloadSchema = z.object({
   arguments: z.record(z.unknown()).default({}),
   read_only: z.boolean().optional(),
   side_effect: z.boolean().optional(),
+  descriptor_hash: z.string().optional(),
+  descriptor_baseline_hash: z.string().optional(),
+  descriptor_drift: z.boolean().optional(),
+  tool_count: z.number().int().nonnegative().optional(),
 });
 
 export const actionInterceptRequestSchema = z.object({

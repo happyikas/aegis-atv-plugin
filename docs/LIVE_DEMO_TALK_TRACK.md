@@ -1,6 +1,6 @@
 # Live Demo Talk Track
 
-Use this sheet while running [scripts/live-demo-preview.sh](/Users/chanikpark/Documents/New%20project/scripts/live-demo-preview.sh).
+Use this sheet while running [scripts/live-demo-preview.sh](/Users/chanikpark/Documents/aegis_atv_codex_mvp/scripts/live-demo-preview.sh).
 
 ## Demo framing
 

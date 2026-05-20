@@ -1,0 +1,10 @@
+{
+  "event": "PostToolUse",
+  "session_id": "sess-demo-1",
+  "trace_id": "trace-demo-1",
+  "tool_name": "Bash",
+  "command": "cat README.md",
+  "status": "success",
+  "duration_ms": 42,
+  "output": "# Aegis ATV"
+}

@@ -62,6 +62,8 @@ Aegis ATV is a trust layer for autonomous agents that decides, before an action 
 
 ## Supporting assets
 
-- Product overview and setup: [README.md](/Users/chanikpark/Documents/New%20project/README.md)
-- Codex plugin package: [plugins/aegis-atv/README.md](/Users/chanikpark/Documents/New%20project/plugins/aegis-atv/README.md)
-- Live runbook: [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md)
+- Product overview and setup: [README.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/README.md)
+- Codex plugin package: [plugins/aegis-atv/README.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/plugins/aegis-atv/README.md)
+- Live runbook: [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md)
+- Two-slide architecture and value brief: [docs/AEGIS_ATV_TWO_SLIDE_BRIEF.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/AEGIS_ATV_TWO_SLIDE_BRIEF.md)
+- Codex deployment templates: [deployment/codex/README.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/README.md)

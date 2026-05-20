@@ -51,6 +51,10 @@ Supported environment variables:
 - `OPENCLAW_BRIDGE_COMMAND`
 - `OPENCLAW_BRIDGE_ARGS`
 - `OPENCLAW_BRIDGE_CWD`
+- `AEGIS_MCP_UPSTREAM_URL`
+- `AEGIS_MCP_UPSTREAM_COMMAND`
+- `AEGIS_MCP_UPSTREAM_ARGS`
+- `AEGIS_MCP_UPSTREAM_CWD`
 
 Example:
 
@@ -59,6 +63,18 @@ export OPENCLAW_WORKSPACE=/path/to/openclaw/workspace
 export AEGIS_DATA_DIR=/path/to/aegis-data
 export PORT=4187
 ```
+
+Codex-facing deployment templates:
+
+- [deployment/codex/hooks.json](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/hooks.json)
+- [deployment/codex/managed-config.toml](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/managed-config.toml)
+- [deployment/codex/requirements.toml](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/requirements.toml)
+
+Operational note for Codex desktop:
+
+- In the currently tested Codex desktop build, desktop hooks should be treated as `optional/non-blocking` telemetry aids.
+- Use the `Aegis MCP proxy` as the primary enforcement point for policy decisions and customer-facing security guarantees.
+- Managed requirements are still useful for enterprise rollout consistency, but pilot claims should center on proxy enforcement rather than hook-only blocking.
 
 ## Daily operator workflow
 
@@ -149,6 +165,42 @@ curl -X POST http://localhost:4187/integrity/check \
   -d '{}'
 ```
 
+### 6. Run Codex hook commands locally
+
+Session start example:
+
+```bash
+cat /Users/chanikpark/Documents/aegis_atv_codex_mvp/pkg/codex-plugin-aegis/examples/session-start.json | npm run hook:codex
+```
+
+Pre-tool decision example:
+
+```bash
+cat /Users/chanikpark/Documents/aegis_atv_codex_mvp/pkg/codex-plugin-aegis/examples/pre-tool-use.json | npm run hook:codex
+```
+
+### 7. Run the stdio MCP shim
+
+Probe the proxy as a stdio MCP server:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | npm run mcp:stdio
+```
+
+If you want to connect a real upstream MCP server:
+
+```bash
+export AEGIS_MCP_UPSTREAM_URL=http://localhost:9000/mcp
+```
+
+or:
+
+```bash
+export AEGIS_MCP_UPSTREAM_COMMAND=/path/to/upstream-mcp
+export AEGIS_MCP_UPSTREAM_ARGS='["--stdio"]'
+export AEGIS_MCP_UPSTREAM_CWD=/path/to/upstream-runtime
+```
+
 ## Using the MCP surface
 
 ### Initialize
@@ -219,6 +271,25 @@ curl -X POST http://localhost:4187/mcp \
   }'
 ```
 
+### Forward a real MCP call through the proxy
+
+```bash
+curl -X POST http://localhost:4187/mcp/proxy \
+  -H 'content-type: application/json' \
+  -H 'x-aegis-agent-id: aid:mcp:proxy' \
+  -H 'x-aegis-session-id: sess-proxy' \
+  -H 'x-aegis-declared-intent: inspect canonical memory only' \
+  -d '{
+    "jsonrpc":"2.0",
+    "id":"proxy-1",
+    "method":"tools/call",
+    "params":{
+      "name":"upstream.echo",
+      "arguments":{"path":"MEMORY.md"}
+    }
+  }'
+```
+
 ## Understanding the verdicts
 
 ### `allow`
@@ -248,7 +319,7 @@ curl -X POST http://localhost:4187/mcp \
 
 See:
 
-- [customer value demos](/Users/chanikpark/Documents/New%20project/docs/AEGIS_ATV_CUSTOMER_VALUE_DEMOS.md)
+- [customer value demos](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/AEGIS_ATV_CUSTOMER_VALUE_DEMOS.md)
 
 ## Troubleshooting
 
@@ -271,6 +342,13 @@ See:
 - confirm the JSON body includes `"jsonrpc":"2.0"`
 - confirm the method name is supported
 - confirm the target tool or resource name exists
+- confirm upstream MCP connection variables are set correctly when using `POST /mcp/proxy` or `npm run mcp:stdio`
+
+### MCP tool calls suddenly start blocking after an upstream change
+
+- call `tools/list` or `POST /mcp/proxy` once to confirm the proxy has captured a descriptor baseline
+- inspect the returned `_meta` fields for `descriptorHash`, `descriptorBaselineHash`, and `descriptorClean`
+- if the upstream schema changed intentionally, recreate the local runtime baseline before re-running the demo
 
 ## Operational notes
 
@@ -278,6 +356,7 @@ See:
 - approvals are stored under `data/approvals.json`
 - telemetry is stored under `data/telemetry/`
 - checkpoints are stored under `data/snapshots/`
+- MCP descriptor baselines are stored under `data/integrity/mcp-descriptors/`
 
 ## What this manual does not promise yet
 

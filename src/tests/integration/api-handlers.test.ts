@@ -4,11 +4,14 @@ import path from "node:path";
 import type { Request, Response } from "express";
 import { afterEach, describe, expect, it } from "vitest";
 import { OpenClawActionHarness } from "../../adapters/mcporter-hook.js";
+import { AegisMcpProxy, InMemoryMcpTransport } from "../../adapters/mcp-proxy.js";
 import { createRouteHandlers } from "../../api/routes.js";
 import { handleApiError } from "../../api/server.js";
 import { OpenClawWorkspaceAdapter } from "../../adapters/openclaw-workspace.js";
 import { ApprovalQueue } from "../../core/approval-queue.js";
 import { ActionFirewall } from "../../core/action-firewall.js";
+import { EventCollector } from "../../core/event-collector.js";
+import { AegisControlPlane } from "../../core/control-plane.js";
 import { IntegrityBaselineStore } from "../../core/integrity.js";
 import { TelemetryStore } from "../../core/telemetry-store.js";
 import { AuditLogger } from "../../daemon/audit.js";
@@ -43,9 +46,13 @@ function mockResponse() {
 }
 
 function mockRequest(overrides: Partial<Request> = {}): Request {
+  const headers = (overrides as Partial<Request> & { headerMap?: Record<string, string> }).headerMap ?? {};
   return {
     body: {},
     params: {},
+    header(name: string) {
+      return headers[name.toLowerCase()];
+    },
     ...overrides,
   } as Request;
 }
@@ -65,20 +72,32 @@ async function createHarness() {
   const audit = new AuditLogger(dataRoot);
   const integrity = new IntegrityBaselineStore(dataRoot, process.cwd());
   const telemetry = new TelemetryStore(dataRoot);
+  const collector = new EventCollector(dataRoot, audit);
   const firewall = new ActionFirewall(integrity);
+  const actions = new OpenClawActionHarness(approvals, audit, async (request) => ({
+    action: request.action,
+    payload: request.payload,
+    delivered: true,
+  }), firewall, telemetry);
+  const controlPlane = new AegisControlPlane({
+    approvals,
+    audit,
+    actions,
+    integrity,
+    collector,
+  });
 
   const handlers = createRouteHandlers({
     workspace,
     approvals,
     audit,
     checkpoints: new CheckpointManager(workspace, dataRoot),
-    actions: new OpenClawActionHarness(approvals, audit, async (request) => ({
-      action: request.action,
-      payload: request.payload,
-      delivered: true,
-    }), firewall, telemetry),
+    actions,
     integrity,
     telemetry,
+    collector,
+    controlPlane,
+    mcpProxy: new AegisMcpProxy(controlPlane, new InMemoryMcpTransport(), dataRoot),
   });
 
   return { workspace, handlers };
@@ -168,6 +187,110 @@ describe("api handlers", () => {
     expect(res.statusCode).toBe(404);
     expect((res.body as { ok: boolean }).ok).toBe(false);
     expect((res.body as { error: { code: string } }).error.code).toBe("not_found");
+  });
+
+  it("supports phase 1 session, prompt, decision, and tool result collection APIs", async () => {
+    const { handlers } = await createHarness();
+    await handlers.createIntegrityBaseline(mockRequest({ body: {} }), mockResponse());
+
+    const sessionRes = mockResponse();
+    await handlers.startSession(
+      mockRequest({
+        body: {
+          agent_id: "aid:executor",
+          workspace: "/repo",
+        },
+      }),
+      sessionRes,
+    );
+    expect(sessionRes.statusCode).toBe(201);
+    const sessionId = (sessionRes.body as { data: { session: { session_id: string } } }).data.session.session_id;
+
+    const promptRes = mockResponse();
+    await handlers.collectUserPrompt(
+      mockRequest({
+        body: {
+          session_id: sessionId,
+          agent_id: "aid:executor",
+          prompt: "Review the repository and summarize the safety posture.",
+        },
+      }),
+      promptRes,
+    );
+    expect(promptRes.statusCode).toBe(201);
+    expect((promptRes.body as { data: { prompt_hash: string } }).data.prompt_hash).toBeTruthy();
+
+    const decisionRes = mockResponse();
+    await handlers.decideTool(
+      mockRequest({
+        body: {
+          session_id: sessionId,
+          agent_id: "aid:executor",
+          action: "read_file",
+          payload: { path: "MEMORY.md" },
+          context: {
+            declared_intent: "inspect canonical memory only",
+            sources: [{ kind: "user_prompt", label: "user", content: "inspect memory", stance: "supporting" }],
+          },
+        },
+      }),
+      decisionRes,
+    );
+    expect(decisionRes.statusCode).toBe(201);
+    expect((decisionRes.body as { data: { verdict: string; atv_lite: { schema_version: string } } }).data.verdict).toBe("allow");
+    expect((decisionRes.body as { data: { atv_lite: { schema_version: string } } }).data.atv_lite.schema_version).toBe("ATV-Lite-v1");
+
+    const resultRes = mockResponse();
+    await handlers.collectToolResult(
+      mockRequest({
+        body: {
+          session_id: sessionId,
+          trace_id: "trace-1",
+          agent_id: "aid:executor",
+          action: "read_file",
+          status: "success",
+          output: "ok",
+        },
+      }),
+      resultRes,
+    );
+    expect(resultRes.statusCode).toBe(201);
+    expect((resultRes.body as { data: { atv_lite: { result: { status: string } } } }).data.atv_lite.result?.status).toBe("success");
+  });
+
+  it("records permission requests and stop events for Codex hook flows", async () => {
+    const { handlers } = await createHarness();
+
+    const permissionRes = mockResponse();
+    await handlers.collectPermissionRequest(
+      mockRequest({
+        body: {
+          session_id: "sess-hooks",
+          agent_id: "aid:executor",
+          action: "send_email",
+          payload: { to: "demo@example.com" },
+          codex_reason: "external outreach requested",
+        },
+      }),
+      permissionRes,
+    );
+    expect(permissionRes.statusCode).toBe(201);
+    expect((permissionRes.body as { data: { item: { id: string } } }).data.item.id).toBeTruthy();
+
+    const stopRes = mockResponse();
+    await handlers.stopSession(
+      mockRequest({
+        body: {
+          session_id: "sess-hooks",
+          agent_id: "aid:executor",
+          result_summary: "completed cleanly",
+          token_count: 42,
+        },
+      }),
+      stopRes,
+    );
+    expect(stopRes.statusCode).toBe(201);
+    expect((stopRes.body as { data: { summary: { status: string } } }).data.summary.status).toBe("completed");
   });
 
   it("intercepts risky actions, queues them, and replays after approval", async () => {
@@ -517,6 +640,37 @@ describe("api handlers", () => {
     expect(res.statusCode).toBe(403);
     const data = (res.body as { data: { mcp_response: { error: { message: string } } } }).data;
     expect(data.mcp_response.error.message).toContain("Blocked by Aegis ATV");
+  });
+
+  it("forwards MCP calls through the proxy endpoint and attaches Aegis metadata", async () => {
+    const { handlers } = await createHarness();
+    await handlers.createIntegrityBaseline(mockRequest({ body: {} }), mockResponse());
+
+    const res = mockResponse();
+    await handlers.proxyMcpTransport(
+      mockRequest({
+        body: {
+          jsonrpc: "2.0",
+          id: "proxy-1",
+          method: "tools/call",
+          params: {
+            name: "upstream.echo",
+            arguments: { path: "MEMORY.md" },
+          },
+        },
+        headerMap: {
+          "x-aegis-agent-id": "aid:mcp:proxy",
+          "x-aegis-session-id": "sess-proxy",
+          "x-aegis-declared-intent": "inspect canonical memory only",
+        },
+      } as Partial<Request>),
+      res,
+    );
+
+    expect(res.statusCode).toBe(200);
+    const body = res.body as { result: { _meta: Record<string, string> } };
+    expect(body.result._meta["aegis/verdict"]).toBe("allow");
+    expect(body.result._meta["aegis/telemetryId"]).toBeTruthy();
   });
 
   it("renders the customer demo dashboard html", async () => {

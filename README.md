@@ -78,6 +78,13 @@ export PORT=4187
 npm run dev
 ```
 
+Optional Phase 2 runtime entrypoints:
+
+```bash
+npm run hook:codex
+npm run mcp:stdio
+```
+
 5. In another terminal, scan the workspace:
 
 ```bash
@@ -158,6 +165,12 @@ This MVP does not replace OpenClaw. It wraps the same local workspace and treats
 - `POST /mcp`
 - `POST /mcp/intercept`
 - `POST /reviewer/attest`
+- `POST /v1/sessions/start`
+- `POST /v1/events/user-prompt`
+- `POST /v1/events/permission-request`
+- `POST /v1/events/stop`
+- `POST /v1/tool/decision`
+- `POST /v1/tool/result`
 - `GET /approval-queue`
 - `POST /approval-queue/:id/approve`
 - `POST /approval-queue/:id/reject`
@@ -170,6 +183,7 @@ This MVP does not replace OpenClaw. It wraps the same local workspace and treats
 - `POST /checkpoints`
 - `GET /checkpoints`
 - `POST /restore`
+- `POST /mcp/proxy`
 
 Success responses use `{ "ok": true, "data": ... }`.
 Error responses use `{ "ok": false, "error": { "code": "...", "message": "..." } }`.
@@ -217,12 +231,12 @@ The response includes:
 For a live demo, focus the audience on those summary fields.
 Do not expand the full `telemetry.vector` unless the audience specifically wants the raw schema-level representation.
 
-For a customer or investor walkthrough, use the full runbook in [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/New%20project/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md).
-Use the final pre-demo gate in [docs/FINAL_DEMO_CHECKLIST.md](/Users/chanikpark/Documents/New%20project/docs/FINAL_DEMO_CHECKLIST.md) before changing PR status or going live.
+For a customer or investor walkthrough, use the full runbook in [docs/CODEX_PLUGIN_DEMO_RUNBOOK.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/CODEX_PLUGIN_DEMO_RUNBOOK.md).
+Use the final pre-demo gate in [docs/FINAL_DEMO_CHECKLIST.md](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/FINAL_DEMO_CHECKLIST.md) before changing PR status or going live.
 For enterprise-oriented customer demos and operator onboarding, also use:
 
-- [customer value demos](/Users/chanikpark/Documents/New%20project/docs/AEGIS_ATV_CUSTOMER_VALUE_DEMOS.md)
-- [user manual](/Users/chanikpark/Documents/New%20project/docs/AEGIS_ATV_USER_MANUAL.md)
+- [customer value demos](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/AEGIS_ATV_CUSTOMER_VALUE_DEMOS.md)
+- [user manual](/Users/chanikpark/Documents/aegis_atv_codex_mvp/docs/AEGIS_ATV_USER_MANUAL.md)
 
 ## Action harness demo
 
@@ -250,6 +264,71 @@ The command bridge contract is simple:
 - stdout must return one JSON object with the execution result
 - non-zero exit codes are treated as bridge failures
 
+## Enforcement model
+
+Aegis ATV for Codex should be operated with `MCP proxy primary` enforcement.
+
+- `MCP proxy` is the authoritative enforcement point for pre-execution `allow`, `require_approval`, and `block` decisions.
+- `Desktop hooks` are useful for lifecycle visibility and best-effort signal capture, but in the currently tested Codex desktop build they behaved as `optional/non-blocking` rather than a dependable hard-stop control plane.
+- `Managed defaults` and `managed requirements` can still be deployed for policy consistency, but customer and pilot commitments should assume the proxy is the real control point.
+
+This means customer demos, pilot rollouts, and product packaging should describe the architecture as `Codex plug-in surface + Aegis MCP proxy enforcement + telemetry/audit services`, not as `desktop hooks only`.
+
+## Codex hooks and MCP proxy deployment
+
+Deployment-oriented templates are included here:
+
+- [deployment/codex/hooks.json](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/hooks.json)
+- [deployment/codex/managed-config.toml](/Users/chanikpark/Documents/aegis_atv_codex_mvp/deployment/codex/managed-config.toml)
+
+Current validation result:
+
+- `desktop hooks`: optional/non-blocking in the tested Codex desktop build
+- `MCP proxy`: primary enforcement path and recommended production/pilot control point
+
+The hook adapter reads Codex lifecycle events from stdin and emits an Aegis gating decision:
+
+```bash
+cat pkg/codex-plugin-aegis/examples/session-start.json | npm run hook:codex
+```
+
+The stdio MCP shim exposes the proxy as a local MCP server process:
+
+```bash
+echo '{"jsonrpc":"2.0","id":1,"method":"tools/list"}' | npm run mcp:stdio
+```
+
+To connect a real upstream MCP server, set either:
+
+```bash
+export AEGIS_MCP_UPSTREAM_URL=http://localhost:9000/mcp
+```
+
+or:
+
+```bash
+export AEGIS_MCP_UPSTREAM_COMMAND=/path/to/upstream-mcp
+export AEGIS_MCP_UPSTREAM_ARGS='["--stdio"]'
+export AEGIS_MCP_UPSTREAM_CWD=/path/to/upstream-runtime
+```
+
+## MCP descriptor drift enforcement
+
+The proxy now baselines upstream `tools/list` descriptors and blocks execution when the runtime descriptor hash changes.
+
+What this means in practice:
+
+- the first proxy startup or `tools/list` call captures a descriptor baseline
+- later tool-schema drift is surfaced as `mcp_descriptor_drift`
+- affected MCP tool calls move to `block` before forwarding
+
+For a clean live demo:
+
+1. Start with a stable upstream MCP server.
+2. Prime the baseline with `POST /mcp/proxy` or `npm run mcp:stdio`.
+3. Change the upstream tool list or schema.
+4. Re-run the same MCP tool call and show the proxy returning a block with descriptor metadata.
+
 ## Best live-demo order
 
 Use this order for the cleanest 5-minute walkthrough:
@@ -274,6 +353,7 @@ The operator-facing telemetry surface now includes:
 The advanced demo surface also includes:
 
 - `POST /mcp` for a more realistic MCP transport flow with `initialize`, `tools/list`, and `tools/call`
+- `POST /mcp/proxy` for forwarding real MCP calls through Aegis policy and descriptor-drift enforcement
 - `POST /mcp/intercept` for policy-gating an MCP-style tool call and returning a JSON-RPC-shaped allow, approval, or block response
 - `POST /reviewer/attest` for comparing two reviewer outputs and deciding whether their cross-attestation is trustworthy enough to accept
 

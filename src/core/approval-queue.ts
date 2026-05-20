@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import type { ApprovalItem } from "./types.js";
 import { approvalItemSchema } from "./schema.js";
-import { nowIso } from "./utils.js";
+import { checksum, nowIso } from "./utils.js";
 
 export class ApprovalQueue {
   private readonly filePath: string;
@@ -41,10 +41,17 @@ export class ApprovalQueue {
 
   async enqueue(action: string, requestedBy: string, payload: Record<string, unknown>): Promise<ApprovalItem> {
     const items = await this.readAllInternal();
+    const requestedAt = nowIso();
     const item: ApprovalItem = {
-      id: `approval-${Date.now()}`,
+      id: `approval-${checksum(JSON.stringify({
+        action,
+        requestedBy,
+        payload,
+        requestedAt,
+        ordinal: items.length,
+      })).slice(0, 16)}`,
       action,
-      requested_at: nowIso(),
+      requested_at: requestedAt,
       requested_by: requestedBy,
       payload,
       status: "pending",

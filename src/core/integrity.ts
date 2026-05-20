@@ -9,9 +9,14 @@ import type {
 } from "./types.js";
 
 const DEFAULT_ARTIFACT_PATHS = [
+  "AGENTS.md",
   "README.md",
   "package.json",
+  "deployment/codex/hooks.json",
+  "deployment/codex/managed-config.toml",
+  ".agents/plugins/marketplace.json",
   "src/adapters/mcporter-hook.ts",
+  "src/adapters/mcp-proxy.ts",
   "src/core/action-firewall.ts",
   "plugins/aegis-atv/.codex-plugin/plugin.json",
   "plugins/aegis-atv/README.md",
@@ -19,6 +24,22 @@ const DEFAULT_ARTIFACT_PATHS = [
 
 function uniqueSorted(paths: string[]): string[] {
   return Array.from(new Set(paths)).sort((left, right) => left.localeCompare(right));
+}
+
+function normalizeArtifactPath(relativePath: string): string {
+  const normalized = path.posix.normalize(relativePath.replaceAll("\\", "/"));
+
+  if (
+    normalized === "." ||
+    normalized === ".." ||
+    normalized.startsWith("../") ||
+    path.posix.isAbsolute(normalized) ||
+    /^[A-Za-z]:\//.test(normalized)
+  ) {
+    throw new Error(`Artifact path must stay within the repository: ${relativePath}`);
+  }
+
+  return normalized;
 }
 
 function classifyCategory(relativePath: string): IntegrityBaselineEntry["category"] {
@@ -32,6 +53,9 @@ function classifyCategory(relativePath: string): IntegrityBaselineEntry["categor
     return "instruction";
   }
   if (relativePath.endsWith(".json")) {
+    return "config";
+  }
+  if (relativePath.endsWith(".toml")) {
     return "config";
   }
   return "runtime";
@@ -57,7 +81,11 @@ export class IntegrityBaselineStore {
   }
 
   resolveArtifacts(requested?: string[]): string[] {
-    return uniqueSorted((requested && requested.length > 0 ? requested : this.defaultArtifactPaths()).map((item) => item.replaceAll("\\", "/")));
+    return uniqueSorted(
+      (requested && requested.length > 0 ? requested : this.defaultArtifactPaths()).map(
+        normalizeArtifactPath,
+      ),
+    );
   }
 
   async createBaseline(paths?: string[]): Promise<IntegrityBaselineManifest> {

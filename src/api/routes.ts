@@ -9,9 +9,16 @@ import {
   reviewerAttestationRequestSchema,
   restoreByParamRequestSchema,
   restoreRequestSchema,
+  stopEventRequestSchema,
+  sessionStartRequestSchema,
   telemetryCompareRequestSchema,
+  toolDecisionRequestSchema,
+  toolResultEventRequestSchema,
+  userPromptEventRequestSchema,
+  permissionRequestEventRequestSchema,
 } from "../core/schema.js";
 import type { OpenClawActionHarness } from "../adapters/mcporter-hook.js";
+import type { AegisMcpProxy } from "../adapters/mcp-proxy.js";
 import { recall } from "../core/recall.js";
 import { isHighRiskAction } from "../core/policy.js";
 import type { ApprovalQueue } from "../core/approval-queue.js";
@@ -22,6 +29,8 @@ import type { MemoryRecord } from "../core/types.js";
 import type { IntegrityBaselineStore } from "../core/integrity.js";
 import type { TelemetryStore } from "../core/telemetry-store.js";
 import { evaluateReviewerAttestation } from "../core/reviewer-attestation.js";
+import type { EventCollector } from "../core/event-collector.js";
+import type { AegisControlPlane } from "../core/control-plane.js";
 
 interface RouteDeps {
   workspace: OpenClawWorkspaceAdapter;
@@ -31,10 +40,19 @@ interface RouteDeps {
   actions: OpenClawActionHarness;
   integrity: IntegrityBaselineStore;
   telemetry: TelemetryStore;
+  collector: EventCollector;
+  controlPlane: AegisControlPlane;
+  mcpProxy: AegisMcpProxy;
 }
 
 export interface RouteHandlers {
   health: (req: Request, res: Response) => void;
+  startSession: (req: Request, res: Response) => Promise<void>;
+  collectUserPrompt: (req: Request, res: Response) => Promise<void>;
+  decideTool: (req: Request, res: Response) => Promise<void>;
+  collectToolResult: (req: Request, res: Response) => Promise<void>;
+  collectPermissionRequest: (req: Request, res: Response) => Promise<void>;
+  stopSession: (req: Request, res: Response) => Promise<void>;
   scanWorkspace: (req: Request, res: Response) => Promise<void>;
   listMemories: (req: Request, res: Response) => Promise<void>;
   getMemory: (req: Request, res: Response) => Promise<void>;
@@ -60,6 +78,7 @@ export interface RouteHandlers {
   listAudit: (req: Request, res: Response) => Promise<void>;
   telemetryDashboard: (req: Request, res: Response) => void;
   handleMcpTransport: (req: Request, res: Response) => Promise<void>;
+  proxyMcpTransport: (req: Request, res: Response) => Promise<void>;
   interceptMcpTool: (req: Request, res: Response) => Promise<void>;
   attestReviewers: (req: Request, res: Response) => Promise<void>;
 }
@@ -405,6 +424,30 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
   return {
     health: (_req: Request, res: Response) => {
       ok(res, { status: "healthy" });
+    },
+    startSession: async (req: Request, res: Response) => {
+      const payload = sessionStartRequestSchema.parse(req.body ?? {});
+      ok(res, await deps.controlPlane.startSession(payload), 201);
+    },
+    collectUserPrompt: async (req: Request, res: Response) => {
+      const payload = userPromptEventRequestSchema.parse(req.body ?? {});
+      ok(res, await deps.controlPlane.recordUserPrompt(payload), 201);
+    },
+    decideTool: async (req: Request, res: Response) => {
+      const payload = toolDecisionRequestSchema.parse(req.body ?? {});
+      ok(res, await deps.controlPlane.decideTool(payload), 201);
+    },
+    collectToolResult: async (req: Request, res: Response) => {
+      const payload = toolResultEventRequestSchema.parse(req.body ?? {});
+      ok(res, await deps.controlPlane.recordToolResult(payload), 201);
+    },
+    collectPermissionRequest: async (req: Request, res: Response) => {
+      const payload = permissionRequestEventRequestSchema.parse(req.body ?? {});
+      ok(res, await deps.controlPlane.requestApproval(payload), 201);
+    },
+    stopSession: async (req: Request, res: Response) => {
+      const payload = stopEventRequestSchema.parse(req.body ?? {});
+      ok(res, await deps.controlPlane.stopSession(payload), 201);
     },
     scanWorkspace: async (_req: Request, res: Response) => {
       const records = await deps.workspace.scan();
@@ -1098,6 +1141,26 @@ export function createRouteHandlers(deps: RouteDeps): RouteHandlers {
         available_tools: buildMcpTools().map((tool) => tool.name),
       }));
     },
+    proxyMcpTransport: async (req: Request, res: Response) => {
+      const payload = mcpTransportRequestSchema.parse(req.body ?? {});
+      const header = (name: string) => {
+        const value = req.header(name);
+        return typeof value === "string" && value.length > 0 ? value : undefined;
+      };
+      const context = {
+        tenant_id: header("x-aegis-tenant-id") ?? "local-tenant",
+        agent_id: header("x-aegis-agent-id") ?? "aid:mcp:proxy",
+        session_id: header("x-aegis-session-id") ?? "session-mcp-proxy",
+        requested_by: header("x-aegis-requested-by") ?? "aid:mcp:proxy",
+        declared_intent: header("x-aegis-declared-intent"),
+        workspace: header("x-aegis-workspace"),
+        repo: header("x-aegis-repo"),
+        model: header("x-aegis-model"),
+        sandbox_mode: header("x-aegis-sandbox-mode"),
+        approval_policy: header("x-aegis-approval-policy"),
+      };
+      res.status(200).json(await deps.mcpProxy.handle(payload, context));
+    },
     interceptMcpTool: async (req: Request, res: Response) => {
       const payload = mcpInterceptRequestSchema.parse(req.body ?? {});
       const actionRequest = {
@@ -1183,6 +1246,18 @@ export function registerRoutes(app: Express, deps: RouteDeps): void {
 
   app.get("/health", handlers.health);
 
+  app.post("/v1/sessions/start", asyncRoute(handlers.startSession));
+
+  app.post("/v1/events/user-prompt", asyncRoute(handlers.collectUserPrompt));
+
+  app.post("/v1/tool/decision", asyncRoute(handlers.decideTool));
+
+  app.post("/v1/tool/result", asyncRoute(handlers.collectToolResult));
+
+  app.post("/v1/events/permission-request", asyncRoute(handlers.collectPermissionRequest));
+
+  app.post("/v1/events/stop", asyncRoute(handlers.stopSession));
+
   app.post("/workspace/scan", asyncRoute(handlers.scanWorkspace));
 
   app.get("/memories", asyncRoute(handlers.listMemories));
@@ -1240,6 +1315,8 @@ export function registerRoutes(app: Express, deps: RouteDeps): void {
   app.get("/dashboard", handlers.telemetryDashboard);
 
   app.post("/mcp", asyncRoute(handlers.handleMcpTransport));
+
+  app.post("/mcp/proxy", asyncRoute(handlers.proxyMcpTransport));
 
   app.post("/mcp/intercept", asyncRoute(handlers.interceptMcpTool));
 
